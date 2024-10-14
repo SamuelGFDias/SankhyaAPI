@@ -1,5 +1,5 @@
-﻿using SankhyaAPI.Client.Entities.Response.LoadEntities;
-using SankhyaAPI.Client.Envelopes;
+﻿using SankhyaAPI.Client.Envelopes;
+using SankhyaAPI.Client.Responses;
 
 namespace SankhyaAPI.Client.Extensions;
 

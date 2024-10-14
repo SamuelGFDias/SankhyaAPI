@@ -1,4 +1,4 @@
-﻿namespace SankhyaAPI.Client.Entities.Response.LoadEntities;
+﻿namespace SankhyaAPI.Client.Responses;
 
 public class LoginEntity
 {

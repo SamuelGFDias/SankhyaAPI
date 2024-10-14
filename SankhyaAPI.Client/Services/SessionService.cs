@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
 using Refit;
-using SankhyaAPI.Client.Entities.Response.LoadEntities;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.Interfaces;

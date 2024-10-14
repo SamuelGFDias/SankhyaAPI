@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<Title>SankhyaAPI</Title>
 		<Authors>samueldias21;</Authors>
-		<Version>0.1.2</Version>
+		<Version>0.3.0</Version>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
@@ -19,7 +19,6 @@
 		<PackageReference Include="Refit" Version="7.1.2" />
 		<PackageReference Include="Refit.HttpClientFactory" Version="7.0.0" />
 		<PackageReference Include="Refit.Xml" Version="7.0.0" />
-		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 	</ItemGroup>
 
 	<ItemGroup>
