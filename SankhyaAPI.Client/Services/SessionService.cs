@@ -2,12 +2,12 @@
 using Refit;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
-using SankhyaAPI.Client.Interfaces;
 using SankhyaAPI.Client.MetaData;
 using SankhyaAPI.Client.Providers;
 using SankhyaAPI.Client.Requests;
 using SankhyaAPI.Client.Responses;
 using SankhyaAPI.Client.Utils;
+using System.Globalization;
 
 namespace SankhyaAPI.Client.Services;
 
@@ -39,17 +39,29 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         return _apiResponse!.Content!.ResponseBody.GetLoginEntity();
     }
 
+    private async Task<string> Logout(string sessionId)
+    {
+        var apiResponse = await ClientXml.Logout($"{sessionId}.master");
+        apiResponse.Content?.VerificarErros();
+        return apiResponse.Content!.TransactionId!;
+    }
+
     private void ValidaResponseBodyLogin()
     {
         if (_apiResponse?.Content?.ResponseBody == null)
             throw new Exception("Alguma coisa saiu mal no login");
     }
 
-    #endregion
+    private async Task<ResponseBody<T>> ExecuteQuery<T>(string script)
+        where T : class
+    {
+        var envelope = ExecuteQueryGeneric.CreateQueryEnvelope<T>(script);
+        var response = await Request(ClientJson.Query, envelope);
+        response.Content?.VerificarErros();
 
-    #region "Protected Methods"
-
-    protected async Task<ApiResponse<ServiceResponse<T>>> Request<T>(
+        return response.Content!.ResponseBody;
+    }
+    private async Task<ApiResponse<ServiceResponse<T>>> Request<T>(
         Func<string, ServiceRequest<T>, Task<ApiResponse<ServiceResponse<T>>>> client, ServiceRequest<T> envelope)
         where T : class
     {
@@ -59,7 +71,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         return response;
     }
 
-    protected async Task<ApiResponse<ServiceResponse<TResponse>>> RequestWithOtherResponse<TRequest, TResponse>(
+    private async Task<ApiResponse<ServiceResponse<TResponse>>> RequestWithOtherResponse<TRequest, TResponse>(
         Func<string, ServiceRequest<TRequest>, Task<ApiResponse<ServiceResponse<TResponse>>>> client,
         ServiceRequest<TRequest> envelope)
         where TRequest : class
@@ -71,52 +83,51 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         return response;
     }
 
-    protected async Task<List<TResponse>> LoadRequest<TResponse, TProxy>(
+    #endregion
+
+    #region "Protected Methods"
+
+    protected async Task<List<T>> LoadRequest<T>(
         string query,
         string entityName
     )
-        where TResponse : class, IProxysable<TResponse, TProxy>, new()
-        where TProxy : class
+        where T : class, new()
     {
-        var envelope = await LoadRecordsGeneric.CreateLoadEnvelope<TProxy, TResponse>(entityName, query);
+        var envelope = LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query);
         var response = await Request(ClientXml.LoadRecordsGeneric, envelope);
 
         var entities =
             response.Content?.ResponseBody.Entities?.Entity
             ?? throw new Exception("Erro ao retornar registro");
 
-        return entities.Select(e => new TResponse().FromProxy(e)).ToList();
+        return entities;
     }
 
-    protected async Task<List<TResponse>> UpdateRequest<TResponse, TProxy, TRequest>(
-        List<TRequest> request,
+    protected async Task<List<T>> UpdateRequest<T>(
+        List<T> request,
         string entityName
     )
-        where TResponse : class, IProxysable<TResponse, TProxy>, new()
-        where TRequest : class, IObjectWithKey
-        where TProxy : class
+        where T : class, new()
     {
-        var envelope = await SaveRecordsGeneric.CreateUpdateEnvelope<TRequest, TResponse>(request, entityName);
-        var response = await RequestWithOtherResponse(ClientXml.SaveRecordsGeneric<TRequest, TProxy>, envelope);
+        var envelope = SaveRecordsGeneric.CreateUpdateEnvelope(request, entityName);
+        var response = await RequestWithOtherResponse(ClientXml.SaveRecordsGeneric, envelope);
 
         var entities =
             response.Content?.ResponseBody.Entities?.Entity
             ?? throw new Exception("Erro ao retornar registro");
 
-        return entities.Select(e => new TResponse().FromProxy(e)).ToList();
+        return entities;
     }
 
 
-    protected async Task<List<TResponse>> InsertRequest<TResponse, TProxy, TRequest>(
-        List<TRequest> request,
+    protected async Task<List<T>> InsertRequest<T>(
+        List<T> request,
         string entityName
     )
-        where TResponse : class, IProxysable<TResponse, TProxy>, new()
-        where TRequest : class
-        where TProxy : class
+        where T : class, new()
     {
-        var envelope = await SaveRecordsGeneric.CreateInsertEnvelope<TRequest, TResponse>(request, entityName);
-        var response = await RequestWithOtherResponse(ClientXml.SaveRecordsGeneric<TRequest, TProxy>, envelope);
+        var envelope = SaveRecordsGeneric.CreateInsertEnvelope(request, entityName);
+        var response = await RequestWithOtherResponse(ClientXml.SaveRecordsGeneric, envelope);
 
         response.Content?.VerificarErros();
 
@@ -124,7 +135,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
             response.Content?.ResponseBody.Entities?.Entity
             ?? throw new Exception("Erro ao retornar registro");
 
-        return entities.Select(e => new TResponse().FromProxy(e)).ToList();
+        return entities;
     }
 
     #endregion
@@ -133,71 +144,69 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
 
     public async Task<List<T>> Query<T>(string script) where T : class, new()
     {
-        var envelope = ExecuteQueryGeneric
-            .CreateQueryEnvelope<T>(script);
-        var response = await Request(ClientJson.Query, envelope);
-        response.Content?.VerificarErros();
-        var list = new List<T>();
-        if (response.Content?.ResponseBody.Rows is { Count: > 0 })
-            ObjectFromArrayValues.GetListOfObjectsFromObjectMatrix(list, response.Content?.ResponseBody.Rows!);
+        var response = await ExecuteQuery<T>(script);
+
+        if (response.FieldsMetadata is null) return [];
+
+        var fields = new Dictionary<string, List<dynamic>?>();
+        var keys = response.FieldsMetadata.Select(a => a.Name).ToList();
+        var rows = response.Rows;
+
+        for (int i = 0; i < keys.Count; i++)
+        {
+            int order = response.FieldsMetadata[i].Order - 1;
+            string key = keys[order];
+            var values = rows?.Select(t => t[order]).ToList();
+
+            fields.Add(key, values);
+        }
+
+        var list = ObjectUtilsMethods.GetListOfObjectsFromDictionary<T>(fields);
+
         return list;
     }
 
-    public async Task<Dictionary<string, object?>> Query(string script)
+    public async Task<List<Dictionary<string, dynamic?>>> Query(string script)
     {
-        var envelope = ExecuteQueryGeneric.CreateQueryEnvelope<object>(script);
-        var response = await Request(ClientJson.Query, envelope);
-        response.Content?.VerificarErros();
+        var response = await ExecuteQuery<object>(script);
 
-        var result = new Dictionary<string, object?>();
+        if (response.FieldsMetadata is null) return [];
 
-        if (response.Content?.ResponseBody.Rows is not { Count: > 0 }) return result;
+        var fields = new List<Dictionary<string, dynamic?>>();
+        var keys = response.FieldsMetadata.Select(a => a.Name).ToList();
+        var rows = response.Rows;
 
-        foreach (var row in response.Content.ResponseBody.Rows)
-            for (var j = 0; j < row.Count; j++)
-            {
-                var fieldName = response.Content.ResponseBody.FieldsMetadata?[j].Name;
-                var fieldValue = row[j];
-                if (fieldName == null) continue;
-                result[fieldName] = fieldValue;
-            }
-
-        return result;
-    }
-
-    public async Task<List<Dictionary<string, object?>>> QueryList(string script)
-    {
-        var envelope = ExecuteQueryGeneric.CreateQueryEnvelope<object>(script);
-        var response = await Request(ClientJson.Query, envelope);
-        response.Content?.VerificarErros();
-
-        var result = new List<Dictionary<string, object?>>();
-
-        if (response.Content?.ResponseBody.Rows is not { Count: > 0 }) return result;
-
-        foreach (var row in response.Content.ResponseBody.Rows)
+        for (var i = 0; i < keys.Count; i++)
         {
-            for (int j = 0; j < row.Count; j++)
-            {
-                var fieldName = response.Content.ResponseBody.FieldsMetadata?[j].Name;
-                if (fieldName == null) continue;
+            int order = response.FieldsMetadata[i].Order - 1;
+            string key = keys[order];
+            var values = rows?.Select(t => t[order]).ToList();
 
-                var fieldValue = row[j];
-                var dict = new Dictionary<string, object?> { { fieldName, fieldValue } };
-                result.Add(dict);
+            for (int j = 0; j < values?.Count; j++)
+            {
+                if (fields.Count <= j) fields.Add(new());
+                var value = values[j];
+
+
+                fields[j].Add(key,
+                    value switch
+                    {
+                        string s => DateTime.TryParseExact(s, "ddMMyyyy HH:mm:ss", CultureInfo.InvariantCulture,
+                            DateTimeStyles.None, out var date) ? date : s.Trim(),
+                        _ => value
+                    });
             }
         }
 
-        return result;
+        return fields;
     }
 
-    public async Task<string> Logout(string sessionId)
-    {
-        var apiResponse = await ClientXml.Logout($"{sessionId}.master");
-        apiResponse.Content?.VerificarErros();
-        return apiResponse.Content!.TransactionId!;
-    }
-
+    /// <summary>
+    /// Método para abertura de sessão no Sankhya. Deve-se sempre fechar a conexão usando <see cref="LogoutSankhya"/> após o uso.
+    /// </summary>
+    /// <param name="usuario"></param>
+    /// <param name="interno"></param>
+    /// <returns>O retorno será a classe <see cref="LoginEntity"/> com as propriedades referentes a sessão</returns>
     public async Task<LoginEntity> LoginSankhya(string usuario, string interno)
     {
         var login = await Login(usuario, interno);
@@ -206,6 +215,10 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         return login;
     }
 
+    /// <summary>
+    /// Método para fechamento de sessão no Sankhya.
+    /// </summary>
+    /// <returns></returns>
     public async Task LogoutSankhya()
     {
         await Logout(_sessionId);

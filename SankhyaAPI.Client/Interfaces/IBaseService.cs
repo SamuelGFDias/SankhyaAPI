@@ -1,19 +1,10 @@
 ﻿namespace SankhyaAPI.Client.Interfaces;
 
-public interface IBaseService<TResponse, TRequest, TInsert>
+public interface IBaseService<T>
 {
-    Task<List<TResponse>> Inserir(List<TInsert> requests);
-    Task<TResponse> Inserir(TInsert request);
-    Task<List<TResponse>> Atualizar(List<TRequest> requests);
-    Task<TResponse> Atualizar(TRequest request);
-    Task<List<TResponse>> Recuperar(string query);
-}
-
-public interface IBaseService<TResponse, TRequest>
-{
-    Task<List<TResponse>> Inserir(List<TRequest> requests);
-    Task<TResponse> Inserir(TRequest request);
-    Task<List<TResponse>> Atualizar(List<TRequest> requests);
-    Task<TResponse> Atualizar(TRequest request);
-    Task<List<TResponse>> Recuperar(string query);
+    Task<List<T>> Inserir(List<T> requests);
+    Task<T> Inserir(T request);
+    Task<List<T>> Atualizar(List<T> requests);
+    Task<T> Atualizar(T request);
+    Task<List<T>> Recuperar(string query);
 }

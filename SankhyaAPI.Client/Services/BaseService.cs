@@ -1,91 +1,42 @@
-﻿using Microsoft.Extensions.Options;
+﻿using System.Xml.Serialization;
+using Microsoft.Extensions.Options;
 using SankhyaAPI.Client.Interfaces;
 using SankhyaAPI.Client.Providers;
-using SankhyaAPI.Client.Requests;
 
 namespace SankhyaAPI.Client.Services;
 
-#region Explicit Key Entities
-
 public abstract class
-    BaseService<TResponse, TProxy, TRequest, TInsert>(
+    BaseService<T>(
         IOptions<SankhyaClientSettings> sankhyaApiConfig,
         string entityName)
-    : SessionService(sankhyaApiConfig), IBaseService<TResponse, TRequest, TInsert>
-    where TResponse : class, IProxysable<TResponse, TProxy>, new()
-    where TRequest : class, IObjectWithKey
-    where TInsert : class
-    where TProxy : class
+    : SessionService(sankhyaApiConfig), IBaseService<T>
+    where T : class, IXmlSerializable, new()
 
 {
-    public async Task<List<TResponse>> Inserir(List<TInsert> requests)
+    public async Task<List<T>> Inserir(List<T> requests)
     {
-        return await InsertRequest<TResponse, TProxy, TInsert>(requests, entityName);
+        return await InsertRequest<T>(requests, entityName);
     }
 
-    public async Task<TResponse> Inserir(TInsert request)
+    public async Task<T> Inserir(T request)
     {
         var response = await Inserir([request]);
         return response.First();
     }
 
-    public async Task<List<TResponse>> Atualizar(List<TRequest> requests)
+    public async Task<List<T>> Atualizar(List<T> requests)
     {
-        return await UpdateRequest<TResponse, TProxy, TRequest>(requests, entityName);
+        return await UpdateRequest<T>(requests, entityName);
     }
 
-    public async Task<TResponse> Atualizar(TRequest request)
-    {
-        var response = await Atualizar([request]);
-        return response.First();
-    }
-
-    public async Task<List<TResponse>> Recuperar(string query)
-    {
-        return await LoadRequest<TResponse, TProxy>(query, entityName);
-    }
-}
-
-#endregion
-
-#region AutoEnumrable Entities
-
-public abstract class
-    BaseService<TResponse, TProxy, TRequest>(
-        IOptions<SankhyaClientSettings> sankhyaApiConfig,
-        string entityName)
-    : SessionService(sankhyaApiConfig), IBaseService<TResponse, TRequest>
-    where TResponse : class, IProxysable<TResponse, TProxy>, new()
-    where TRequest : class, IObjectWithKey
-    where TProxy : class
-
-{
-    public async Task<List<TResponse>> Inserir(List<TRequest> requests)
-    {
-        return await InsertRequest<TResponse, TProxy, TRequest>(requests, entityName);
-    }
-
-    public async Task<TResponse> Inserir(TRequest request)
-    {
-        var response = await Inserir([request]);
-        return response.First();
-    }
-
-    public async Task<List<TResponse>> Atualizar(List<TRequest> requests)
-    {
-        return await UpdateRequest<TResponse, TProxy, TRequest>(requests, entityName);
-    }
-
-    public async Task<TResponse> Atualizar(TRequest request)
+    public async Task<T> Atualizar(T request)
     {
         var response = await Atualizar([request]);
         return response.First();
     }
 
-    public async Task<List<TResponse>> Recuperar(string query)
+    public async Task<List<T>> Recuperar(string query)
     {
-        return await LoadRequest<TResponse, TProxy>(query, entityName);
+        return await LoadRequest<T>(query, entityName);
     }
 }
-
-#endregion

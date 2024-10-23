@@ -19,19 +19,18 @@ public class LoadRecordsGeneric
     /// <param name="orderBy">Expressão de ordenação SQL.</param>
     /// <param name="parameters">Lista de parâmetros para a expressão de filtro.</param>
     /// <returns>Um <see cref="Task{ServiceRequest{TEnvelope}"/> representando a operação assíncrona.</returns>
-    public static Task<ServiceRequest<TEnvelope>> CreateLoadEnvelope<TEnvelope, TPropeties>(
+    public static ServiceRequest<T> CreateLoadEnvelope<T>(
         string entityName, string expression = "",
         string? orderBy = null,
         List<Parameter>? parameters = null)
-        where TEnvelope : class
-        where TPropeties : class, new()
+        where T : class, new()
     {
-        var envelope = new ServiceRequest<TEnvelope>
+        var envelope = new ServiceRequest<T>
         {
             ServiceName = ServiceNames.CrudServiceProviderLoadRecords,
-            RequestBody = new RequestBody<TEnvelope>
+            RequestBody = new RequestBody<T>
             {
-                DataSet = new DataSet<TEnvelope>
+                DataSet = new DataSet<T>
                 {
                     DisableRowsLimit = "true",
                     RootEntity = entityName,
@@ -45,18 +44,9 @@ public class LoadRecordsGeneric
             }
         };
         var sankhyaEntity = new SankhyaEntity
-            { Path = "", Field = ObjectFromArrayValues.GetFieldsFromObjectJsonAttribOnly(new TPropeties()) };
+            { Path = "", Field = ObjectUtilsMethods.GetFieldsFromObject(new T()) };
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
 
-        return Task.FromResult(envelope);
-    }
-
-    public static Task<ServiceRequest<T>> CreateLoadEnvelope<T>(
-        string entityName, string expression = "",
-        string? orderBy = null,
-        List<Parameter>? parameters = null)
-        where T : class, new()
-    {
-        return CreateLoadEnvelope<T, T>(entityName, expression, orderBy, parameters);
+        return envelope;
     }
 }

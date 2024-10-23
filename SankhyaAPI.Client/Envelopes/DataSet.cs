@@ -21,5 +21,5 @@ public class DataSet<TEntity> where TEntity : class
 
     [XmlElement(ElementName = "entity")] public List<SankhyaEntity> Entity { get; set; } = new();
     [XmlElement(ElementName = "criteria")] public Criteria? Criteria { get; set; }
-    [XmlElement(ElementName = "dataRow")] public List<DataRow<TEntity>>? DataRow { get; set; }
+    [XmlElement(ElementName = "dataRow")] public List<DataRow>? DataRow { get; set; }
 }

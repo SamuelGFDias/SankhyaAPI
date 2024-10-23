@@ -11,53 +11,54 @@ public static class SaveRecordsGeneric
 {
     #region public Methods
 
-    public static Task<ServiceRequest<TRequest>> CreateInsertEnvelope<TRequest, TResponse>(
-        List<TRequest> objs,
+    public static ServiceRequest<T> CreateInsertEnvelope<T>(
+        List<T> objs,
         string entityName)
-        where TRequest : class
-        where TResponse : class, new()
+        where T : class, new()
     {
-        var envelope = new ServiceRequest<TRequest>
+        var envelope = new ServiceRequest<T>
         {
             ServiceName = ServiceNames.CrudServiceProviderSaveRecords,
-            RequestBody = new RequestBody<TRequest>
+            RequestBody = new RequestBody<T>
             {
-                DataSet = new DataSet<TRequest>
+                DataSet = new DataSet<T>
                 {
                     RootEntity = entityName,
-                    DataRow = objs.Select(obj => new DataRow<TRequest> { Entity = obj }).ToList()
+                    DataRow = objs.Select(obj => new DataRow
+                    {
+                        Entity = obj.GetEntityForFields()
+                    }).ToList()
                 }
             }
         };
         var sankhyaEntity = new SankhyaEntity
         {
             Path = "",
-            Field = ObjectFromArrayValues.GetFieldsFromObjectJsonAttribOnly(new TResponse())
+            Field = ObjectUtilsMethods.GetFieldsFromObject(new T())
         };
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
 
-        return Task.FromResult(envelope);
+        return envelope;
     }
 
 
-    public static Task<ServiceRequest<TRequest>> CreateUpdateEnvelope<TRequest, TResponse>(
-        List<TRequest> objs, string entityName)
-        where TRequest : class, IObjectWithKey
-        where TResponse : class, new()
+    public static ServiceRequest<T> CreateUpdateEnvelope<T>(
+        List<T> objs, string entityName)
+        where T : class, new()
     {
-        var envelope = new ServiceRequest<TRequest>
+        var envelope = new ServiceRequest<T>
         {
             ServiceName = ServiceNames.CrudServiceProviderSaveRecords,
-            RequestBody = new RequestBody<TRequest>
+            RequestBody = new RequestBody<T>
             {
-                DataSet = new DataSet<TRequest>
+                DataSet = new DataSet<T>
                 {
                     RootEntity = entityName,
                     DataRow = objs.Select(obj =>
                     {
-                        var data = new DataRow<TRequest>
+                        var data = new DataRow
                         {
-                            Entity = obj,
+                            Entity = obj.GetEntityForFields(true),
                         };
                         data.Key.GetKeysAsXml(obj);
                         return data;
@@ -66,38 +67,12 @@ public static class SaveRecordsGeneric
             }
         };
         var sankhyaEntity = new SankhyaEntity
-            { Path = "", Field = ObjectFromArrayValues.GetFieldsFromObjectJsonAttribOnly(new TResponse()) };
+        {
+            Path = "",
+            Field = ObjectUtilsMethods.GetFieldsFromObject(new T())
+        };
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
-        return Task.FromResult(envelope);
-    }
-
-    #endregion
-
-    #region Sobrecargas
-
-    public static Task<ServiceRequest<TRequest>> CreateInsertEnvelope<TRequest, TResponse>(TRequest obj,
-        string entityName) where TRequest : class where TResponse : class, new()
-    {
-        return CreateInsertEnvelope<TRequest, TResponse>([obj], entityName);
-    }
-
-    public static Task<ServiceRequest<T>> CreateInsertEnvelope<T>(T obj, string entityName) where T : class, new()
-    {
-        return CreateInsertEnvelope<T, T>([obj], entityName);
-    }
-
-    public static Task<ServiceRequest<TRequest>> CreateUpdateEnvelope<TRequest, TResponse>(TRequest obj,
-        string entityName)
-        where TRequest : class, IObjectWithKey
-        where TResponse : class, new()
-    {
-        return CreateUpdateEnvelope<TRequest, TResponse>([obj], entityName);
-    }
-
-    public static Task<ServiceRequest<T>> CreateUpdateEnvelope<T>(List<T> objs, string entityName)
-        where T : class, IObjectWithKey, new()
-    {
-        return CreateUpdateEnvelope<T, T>(objs, entityName);
+        return envelope;
     }
 
     #endregion
@@ -112,18 +87,40 @@ public static class SaveRecordsGeneric
         // Itera sobre as propriedades da entidade
         foreach (var prop in obj.GetType().GetProperties())
         {
-            var keyAttribute = prop.GetCustomAttribute<PrimaryKeyElement>();
-            if (keyAttribute != null)
-            {
-                var value = prop.GetValue(obj);
-                if (value == null) throw new Exception($"Chave primária {keyAttribute.ElementName} não pode ser nula");
+            var keyAttribute = prop.GetCustomAttribute<PrimaryKeyElementAttribute>();
+            if (keyAttribute == null) continue;
 
-                // Adiciona cada chave primária como um elemento XML individual
-                element.Add(new XElement(keyAttribute.ElementName, value));
-            }
+            object? value = prop.GetValue(obj);
+
+            if (value == null) throw new Exception($"Chave primária {keyAttribute.ElementName} não pode ser nula");
+
+            element.Add(new XElement(keyAttribute.ElementName, ObjectUtilsMethods.GetFormattedString(value)));
         }
 
         return element;
+    }
+
+    private static XElement GetEntityForFields<T>(this T obj, bool isUpdate = false) where T : class
+    {
+        var localFields = new XElement("localFields");
+
+        foreach (var prop in obj.GetType().GetProperties())
+        {
+            var keyAttribute = prop.GetCustomAttribute<PrimaryKeyElementAttribute>();
+            if (keyAttribute != null)
+            {
+                if (isUpdate || keyAttribute.AutoEnumerable) continue;
+            }
+
+            var xmlElementName = prop.GetXmlElementName();
+            object? value = prop.GetValue(obj);
+
+            if (xmlElementName == null || value == null) continue;
+
+            localFields.Add(new XElement(xmlElementName, ObjectUtilsMethods.GetFormattedString(value)));
+        }
+
+        return localFields;
     }
 
     #endregion

@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using SankhyaAPI.Client.Utils;
+using System.Reflection;
 using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
@@ -14,6 +15,21 @@ public abstract class XmlSerialable : IXmlSerializable
 
     public virtual void ReadXml(XmlReader reader)
     {
+        var properties = GetType().GetProperties();
+        reader.Read();
+
+        for (int i = 0; i < properties.Length; i++)
+        {
+            var property = properties[i];
+            string? xmlElementName = property.GetXmlElementName();
+
+            if (xmlElementName == null || !reader.IsStartElement(xmlElementName) && !reader.IsStartElement($"f{i}")) continue;
+
+            string value = reader.ReadElementContentAsString();
+            var convertedValue = ObjectUtilsMethods.ConvertForPropertyType(value, property);
+
+            property.SetValue(this, convertedValue);
+        }
     }
 
     public virtual void WriteXml(XmlWriter writer)
@@ -22,31 +38,39 @@ public abstract class XmlSerialable : IXmlSerializable
         foreach (var property in properties)
         {
             if (!ShouldSerializeProperty(property)) continue;
-            var value = property.GetValue(this);
-            if (value == null || string.IsNullOrEmpty(value.ToString())) continue;
+
+            object? value = property.GetValue(this);
+            if (value == null || string.IsNullOrWhiteSpace(value.ToString())) continue;
+
             var xmlElementAttr = property.GetCustomAttribute<XmlElementAttribute>();
-            var elementName = xmlElementAttr?.ElementName ?? property.Name;
+            string? elementName = xmlElementAttr?.ElementName;
+
+            var primaryKeyAttr = property.GetCustomAttribute<PrimaryKeyElementAttribute>();
+            if (primaryKeyAttr is { AutoEnumerable: false })
+            {
+                elementName = primaryKeyAttr.ElementName;
+            }
 
             if (string.IsNullOrEmpty(elementName)) continue;
+
+            string newValue = ObjectUtilsMethods.GetFormattedString(value);
+
             writer.WriteStartElement(elementName);
-            writer.WriteString(value.ToString());
+            writer.WriteString(newValue);
             writer.WriteEndElement();
         }
     }
 
+
     private bool ShouldSerializeProperty(PropertyInfo property)
     {
-        if (property.GetCustomAttribute<XmlIgnoreAttribute>() != null) return false;
-        var value = property.GetValue(this);
-        return value != null;
-    }
+        var xmlIgnoreAttr = property.GetCustomAttribute<XmlIgnoreAttribute>();
+        if (xmlIgnoreAttr != null) return false;
 
-    private static bool IsDefaultValue(object value, Type type)
-    {
-        if (type == typeof(string)) return string.IsNullOrEmpty((string)value);
+        var primaryKeyAttr = property.GetCustomAttribute<PrimaryKeyElementAttribute>();
+        if (primaryKeyAttr is { AutoEnumerable: true }) return false;
 
-        return Nullable.GetUnderlyingType(type) != null
-            ? IsDefaultValue(value, Nullable.GetUnderlyingType(type)!)
-            : value.Equals(Activator.CreateInstance(type));
+        object? value = property.GetValue(this);
+        return value != null && !string.IsNullOrWhiteSpace(value.ToString()) ;
     }
 }
