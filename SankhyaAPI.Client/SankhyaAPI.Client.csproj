@@ -11,6 +11,10 @@
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
 		<GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+		<RepositoryType>git</RepositoryType>
+		<RepositoryUrl>https://github.com/SamuelGFDias/SankhyaAPI</RepositoryUrl>
+		<PackageTags>Sankhya;ERP; Integracao</PackageTags>
+		<NeutralLanguage>pt-BR</NeutralLanguage>
 	</PropertyGroup>
 
 	<ItemGroup>

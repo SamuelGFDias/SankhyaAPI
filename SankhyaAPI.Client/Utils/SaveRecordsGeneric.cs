@@ -13,17 +13,17 @@ public static class SaveRecordsGeneric
 
     public static ServiceRequest<T> CreateInsertEnvelope<T>(
         List<T> objs,
-        string entityName)
+        Enum entityName)
         where T : class, new()
     {
+        ObjectUtilsMethods.ValidarCamposChave(objs);
         var envelope = new ServiceRequest<T>
         {
             ServiceName = ServiceNames.CrudServiceProviderSaveRecords,
             RequestBody = new RequestBody<T>
             {
-                DataSet = new DataSet<T>
+                DataSet = new DataSet
                 {
-                    RootEntity = entityName,
                     DataRow = objs.Select(obj => new DataRow
                     {
                         Entity = obj.GetEntityForFields()
@@ -36,6 +36,7 @@ public static class SaveRecordsGeneric
             Path = "",
             Field = ObjectUtilsMethods.GetFieldsFromObject(new T())
         };
+        envelope.RequestBody.DataSet.SetRootEntity(entityName);
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
 
         return envelope;
@@ -43,17 +44,18 @@ public static class SaveRecordsGeneric
 
 
     public static ServiceRequest<T> CreateUpdateEnvelope<T>(
-        List<T> objs, string entityName)
+        List<T> objs,
+        Enum entityName)
         where T : class, new()
     {
+        ObjectUtilsMethods.ValidarCamposChave(objs, true);
         var envelope = new ServiceRequest<T>
         {
             ServiceName = ServiceNames.CrudServiceProviderSaveRecords,
             RequestBody = new RequestBody<T>
             {
-                DataSet = new DataSet<T>
+                DataSet = new DataSet
                 {
-                    RootEntity = entityName,
                     DataRow = objs.Select(obj =>
                     {
                         var data = new DataRow
@@ -71,6 +73,7 @@ public static class SaveRecordsGeneric
             Path = "",
             Field = ObjectUtilsMethods.GetFieldsFromObject(new T())
         };
+        envelope.RequestBody.DataSet.SetRootEntity(entityName);
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
         return envelope;
     }

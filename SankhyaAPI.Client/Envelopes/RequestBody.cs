@@ -9,7 +9,7 @@ public class RequestBody<TEntity> where TEntity : class
     [Newtonsoft.Json.JsonIgnore]
     [System.Text.Json.Serialization.JsonIgnore]
     [XmlElement("dataSet")]
-    public DataSet<TEntity> DataSet { get; set; } = new();
+    public DataSet DataSet { get; set; } = new();
 
     [Newtonsoft.Json.JsonIgnore]
     [System.Text.Json.Serialization.JsonIgnore]

@@ -20,7 +20,8 @@ public class LoadRecordsGeneric
     /// <param name="parameters">Lista de parâmetros para a expressão de filtro.</param>
     /// <returns>Um <see cref="Task{ServiceRequest{TEnvelope}"/> representando a operação assíncrona.</returns>
     public static ServiceRequest<T> CreateLoadEnvelope<T>(
-        string entityName, string expression = "",
+        Enum entityName,
+        string expression = "",
         string? orderBy = null,
         List<Parameter>? parameters = null)
         where T : class, new()
@@ -30,10 +31,9 @@ public class LoadRecordsGeneric
             ServiceName = ServiceNames.CrudServiceProviderLoadRecords,
             RequestBody = new RequestBody<T>
             {
-                DataSet = new DataSet<T>
+                DataSet = new DataSet
                 {
                     DisableRowsLimit = "true",
-                    RootEntity = entityName,
                     OrderByExpression = orderBy,
                     Criteria = new Criteria
                     {
@@ -44,7 +44,11 @@ public class LoadRecordsGeneric
             }
         };
         var sankhyaEntity = new SankhyaEntity
-            { Path = "", Field = ObjectUtilsMethods.GetFieldsFromObject(new T()) };
+        {
+            Path = "",
+            Field = ObjectUtilsMethods.GetFieldsFromObject(new T())
+        };
+        envelope.RequestBody.DataSet.SetRootEntity(entityName);
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
 
         return envelope;

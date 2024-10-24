@@ -1,5 +1,9 @@
 ﻿namespace SankhyaAPI.Client.Interfaces;
 
+/// <summary>
+/// Interface para os serviços base de CRUD
+/// </summary>
+/// <typeparam name="T"></typeparam>
 public interface IBaseService<T>
 {
     Task<List<T>> Inserir(List<T> requests);

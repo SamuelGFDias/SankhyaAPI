@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Azure.Core;
+using Microsoft.Extensions.Options;
 using Refit;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
@@ -11,6 +12,11 @@ using System.Globalization;
 
 namespace SankhyaAPI.Client.Services;
 
+
+/// <summary>
+/// Classe de serviço para abstração de sessão com o Sankhya. Também contém métodos para execução de queries com SQL Nativo.
+/// </summary>
+/// <param name="sankhyaApiConfig"></param>
 public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     : DefaultClientService(sankhyaApiConfig), ISankhyaApi
 {
@@ -39,11 +45,10 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         return _apiResponse!.Content!.ResponseBody.GetLoginEntity();
     }
 
-    private async Task<string> Logout(string sessionId)
+    private async Task Logout(string sessionId)
     {
         var apiResponse = await ClientXml.Logout($"{sessionId}.master");
         apiResponse.Content?.VerificarErros();
-        return apiResponse.Content!.TransactionId!;
     }
 
     private void ValidaResponseBodyLogin()
@@ -57,6 +62,8 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     {
         var envelope = ExecuteQueryGeneric.CreateQueryEnvelope<T>(script);
         var response = await Request(ClientJson.Query, envelope);
+        if (response.Content?.ResponseBody == null)
+            throw new Exception("Erro de sintaxe na consulta. Confira o script SQL passado como parâmetro.");
         response.Content?.VerificarErros();
 
         return response.Content!.ResponseBody;
@@ -89,7 +96,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
 
     protected async Task<List<T>> LoadRequest<T>(
         string query,
-        string entityName
+        Enum entityName
     )
         where T : class, new()
     {
@@ -104,12 +111,12 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     }
 
     protected async Task<List<T>> UpdateRequest<T>(
-        List<T> request,
-        string entityName
+        List<T> requests,
+        Enum entityName
     )
         where T : class, new()
     {
-        var envelope = SaveRecordsGeneric.CreateUpdateEnvelope(request, entityName);
+        var envelope = SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName);
         var response = await RequestWithOtherResponse(ClientXml.SaveRecordsGeneric, envelope);
 
         var entities =
@@ -121,12 +128,12 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
 
 
     protected async Task<List<T>> InsertRequest<T>(
-        List<T> request,
-        string entityName
+        List<T> requests,
+        Enum entityName
     )
         where T : class, new()
     {
-        var envelope = SaveRecordsGeneric.CreateInsertEnvelope(request, entityName);
+        var envelope = SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName);
         var response = await RequestWithOtherResponse(ClientXml.SaveRecordsGeneric, envelope);
 
         response.Content?.VerificarErros();
@@ -136,12 +143,20 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
             ?? throw new Exception("Erro ao retornar registro");
 
         return entities;
+
     }
 
     #endregion
 
     #region "Public Methods"
 
+
+    /// <summary>
+    /// Método para mapeamento de dados de uma query em SQL Nativo para uma lista de objetos. 
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="script">Parâmetro que recebe script em SQL Nativo para retorno de dados.</param>
+    /// <returns></returns>
     public async Task<List<T>> Query<T>(string script) where T : class, new()
     {
         var response = await ExecuteQuery<T>(script);

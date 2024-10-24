@@ -25,7 +25,7 @@ public abstract class XmlSerialable : IXmlSerializable
 
             if (xmlElementName == null || !reader.IsStartElement(xmlElementName) && !reader.IsStartElement($"f{i}")) continue;
 
-            string value = reader.ReadElementContentAsString();
+            string? value = reader.ReadElementContentAsString();
             var convertedValue = ObjectUtilsMethods.ConvertForPropertyType(value, property);
 
             property.SetValue(this, convertedValue);

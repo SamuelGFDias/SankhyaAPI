@@ -1,11 +1,23 @@
 ﻿using System.Xml.Serialization;
+using SankhyaAPI.Client.Utils;
 
 namespace SankhyaAPI.Client.Envelopes;
 
-public class DataSet<TEntity> where TEntity : class
+public class DataSet
 {
+    private Enum? _rootEntity;
+
     [XmlAttribute(AttributeName = "rootEntity")]
-    public string? RootEntity { get; set; } = string.Empty;
+    public string? RootEntity
+    {
+        get => _rootEntity != null ? ObjectUtilsMethods.GetXmlEnumValue(_rootEntity) : string.Empty;
+        set { }
+    }
+
+    public void SetRootEntity(Enum entity)
+    {
+        _rootEntity = entity;
+    }
 
     [XmlAttribute(AttributeName = "includePresentationFields")]
     public string IncludePresentationFields { get; set; } = "S";
@@ -19,7 +31,7 @@ public class DataSet<TEntity> where TEntity : class
     [XmlAttribute(AttributeName = "orderByExpression")]
     public string? OrderByExpression { get; set; } = string.Empty;
 
-    [XmlElement(ElementName = "entity")] public List<SankhyaEntity> Entity { get; set; } = new();
+    [XmlElement(ElementName = "entity")] public List<SankhyaEntity> Entity { get; set; } = [];
     [XmlElement(ElementName = "criteria")] public Criteria? Criteria { get; set; }
     [XmlElement(ElementName = "dataRow")] public List<DataRow>? DataRow { get; set; }
 }
