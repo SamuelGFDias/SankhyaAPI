@@ -63,7 +63,7 @@ Inicialmente, é importante destacar que esse pacote foi pensado para um context
         [XmlElement("DESCRPROD")] public string? DescrProd { get; set; }
         [XmlElement("REFFORN")] public string? RefForn { get; set; }
     }
-    # obs: É indicado mapear todas as propriedades como nullable
+    // obs: É indicado mapear todas as propriedades como nullable
 2. Para criar a classe de serviço que vai operar nesse entidade é necessário passar como parâmetro um `IOptions<SankhyaClientSettings>` , a classe que representa a entidade e um `Enum` representando a instância da entidade (o mesmo deve utilizar o atributo `XmlEnum` com o nome da instância):
     ```c#
     public enum EEntityNames
@@ -112,7 +112,7 @@ Esta biblioteca permite realizar operações de CRUD (Criar, Ler, Atualizar e Ex
 - O método Recuperar permite buscar dados de uma entidade com base em uma query SQL.
     ```c#
 
-    # O query espera só a parte do Where de uma consulta SQL
+    // O query espera só a parte do Where de uma consulta SQL
     string query = "this.CODPROD = 1";
     var produtos = await produtoClientService.Recuperar(query);
 4. **Query**
@@ -127,7 +127,7 @@ Esta biblioteca permite realizar operações de CRUD (Criar, Ler, Atualizar e Ex
         [XmlElement("DESCRGRUPOPROD")] public string? Grupo { get; set; }
     }
 
-    # Program.cs
+    // Program.cs
 
     // Exemplo de uso do método Query para retornar uma lista de objetos
     string script = "SELECT * FROM Produto WHERE CodProd > 1";
