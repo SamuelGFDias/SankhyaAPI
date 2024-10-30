@@ -111,7 +111,9 @@ Esta biblioteca permite realizar operações de CRUD (Criar, Ler, Atualizar e Ex
 3. **Recuperar**
 - O método Recuperar permite buscar dados de uma entidade com base em uma query SQL.
     ```c#
-    string query = "SELECT * FROM Produto WHERE CodProd = 1";
+
+    # O query espera só a parte do Where de uma consulta SQL
+    string query = "this.CODPROD = 1";
     var produtos = await produtoClientService.Recuperar(query);
 4. **Query**
 - O método Query permite executar uma consulta SQL nativa e retornar os dados em uma lista de objetos mapeados ou em um dicionário de valores.
