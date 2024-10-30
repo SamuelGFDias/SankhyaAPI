@@ -49,7 +49,8 @@ Inicialmente, é importante destacar que esse pacote foi pensado para um context
 
 ## Funcionalidades
 
-1. Para utilização nas três operações principais disponíveis `Update`, `Insert` e `Select`. É necessário mapear a entidade de desejada para um objeto. Um exemplo é a entidade Produto, abaixo estão algumas propriedades da mesma. Campos pertencentes à chave primária devem ter o atributo `PrimaryKeyElement`.
+1. Para utilização nas três operações principais disponíveis `Update`, `Insert` e `Select`. É necessário mapear a entidade de desejada para um objeto. Um exemplo é a entidade Produto, abaixo estão algumas propriedades da mesma. Campos pertencentes à chave primária devem ter o atributo `PrimaryKeyElement`. `XmlSerialable` é uma classe abstrata que é necessária para deserialização dos elementos do XML para o objeto, todas as classes de mapeamento devem implementá-la.
+
 
     | Campo            | Descrição                      | Tipo     | Obrigatório | Padrão |
     |------------------|--------------------------------|----------|-------------|--------|
