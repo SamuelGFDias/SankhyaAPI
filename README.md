@@ -12,10 +12,10 @@ Projeto de integração com ERP Sankhya para operação de CRUD!
 ## 📑 Índice
 - [Sobre](#sobre)
 - [Instalação](#instalação)
-- [Configuração](#configuracao)
+- [Configuração](#configuração)
 - [Funcionalidades](#funcionalidades)
 - [Uso](#uso)
-- [Licença](#licenca)
+- [Licença](#licença)
 
 ## Sobre
 
