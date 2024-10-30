@@ -11,23 +11,23 @@ Projeto de integração com ERP Sankhya para operação de CRUD!
 
 ## 📑 Índice
 - [Sobre](#sobre)
-- [Instalação](#instalacao)
+- [Instalação](#instalação)
 - [Configuração](#configuracao)
 - [Funcionalidades](#funcionalidades)
 - [Uso](#uso)
 - [Licença](#licenca)
 
-## 🚀 Sobre
+## Sobre
 
 Este projeto tem como objetivo disponibilizar, de maneira mais sucinta, métodos mais utilizados para manipulações e retornos de dados. Utilizando a própria API do Sankhya disponível [aqui](https://developer.sankhya.com.br/reference/api-de-integra%C3%A7%C3%B5es-sankhya), o projeto abstrai os métodos para o usuário.
 
 
-## 📦 Instalação
+## Instalação
 1. Na raiz do seu projeto, use o seguinte comando:
    ```bash
    dotnet add package SankhyaAPI.Client --version x.y.z
 
-## ⚙ Configuração
+## Configuração
 
 Inicialmente, é importante destacar que esse pacote foi pensado para um contexto de injeção de dependência. Então, as configurações abaixo mostram como configurá-la na mesma.
 
@@ -146,5 +146,5 @@ Esta biblioteca permite realizar operações de CRUD (Criar, Ler, Atualizar e Ex
 
 
 
-## 📄 Licença
+## Licença
 Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE.txt) para mais detalhes.
