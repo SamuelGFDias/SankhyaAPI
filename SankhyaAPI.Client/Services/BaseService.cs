@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Options;
 using SankhyaAPI.Client.Interfaces;
 using SankhyaAPI.Client.Providers;
-using SankhyaAPI.Client.Utils;
 
 namespace SankhyaAPI.Client.Services;
 

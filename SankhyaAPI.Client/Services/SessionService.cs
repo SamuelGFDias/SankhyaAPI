@@ -1,4 +1,5 @@
-﻿using Azure.Core;
+﻿using Azure;
+using Azure.Core;
 using Microsoft.Extensions.Options;
 using Refit;
 using SankhyaAPI.Client.Envelopes;
@@ -12,7 +13,6 @@ using System.Globalization;
 
 namespace SankhyaAPI.Client.Services;
 
-
 /// <summary>
 /// Classe de serviço para abstração de sessão com o Sankhya. Também contém métodos para execução de queries com SQL Nativo.
 /// </summary>
@@ -23,7 +23,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     private readonly SankhyaClientSettings _sankhyaConfig = sankhyaApiConfig.Value;
     private ApiResponse<ServiceResponse<LoginEntity>>? _apiResponse;
     private string _sessionId = string.Empty;
-    public string JSessionId = string.Empty;
+    protected string JSessionId = string.Empty;
 
     #region "Private Methods"
 
@@ -57,99 +57,83 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
             throw new Exception("Alguma coisa saiu mal no login");
     }
 
+    private async Task<ApiResponse<ServiceResponse<T>>> Execute<T>(
+        Func<
+            string,
+            ServiceRequest<T>,
+            Task<ApiResponse<ServiceResponse<T>>>> client,
+        ServiceRequest<T> envelope)
+        where T : class, new()
+    {
+        await LoginSankhya(_sankhyaConfig.Usuario, _sankhyaConfig.Senha);
+        var response = await client(JSessionId, envelope);
+        await LogoutSankhya();
+        return response;
+    }
+
     private async Task<ResponseBody<T>> ExecuteQuery<T>(string script)
-        where T : class
+        where T : class, new()
     {
-        var envelope = ExecuteQueryGeneric.CreateQueryEnvelope<T>(script);
-        var response = await Request(ClientJson.Query, envelope);
+        var response = await Execute(ClientJson.Query, ExecuteQueryGeneric.CreateQueryEnvelope<T>(script));
+
         if (response.Content?.ResponseBody == null)
+        {
             throw new Exception("Erro de sintaxe na consulta. Confira o script SQL passado como parâmetro.");
+        }
+
         response.Content?.VerificarErros();
-
         return response.Content!.ResponseBody;
-    }
-    private async Task<ApiResponse<ServiceResponse<T>>> Request<T>(
-        Func<string, ServiceRequest<T>, Task<ApiResponse<ServiceResponse<T>>>> client, ServiceRequest<T> envelope)
-        where T : class
-    {
-        await LoginSankhya(_sankhyaConfig.Usuario, _sankhyaConfig.Senha);
-        var response = await client(JSessionId, envelope);
-        await LogoutSankhya();
-        return response;
-    }
-
-    private async Task<ApiResponse<ServiceResponse<TResponse>>> RequestWithOtherResponse<TRequest, TResponse>(
-        Func<string, ServiceRequest<TRequest>, Task<ApiResponse<ServiceResponse<TResponse>>>> client,
-        ServiceRequest<TRequest> envelope)
-        where TRequest : class
-        where TResponse : class
-    {
-        await LoginSankhya(_sankhyaConfig.Usuario, _sankhyaConfig.Senha);
-        var response = await client(JSessionId, envelope);
-        await LogoutSankhya();
-        return response;
     }
 
     #endregion
 
     #region "Protected Methods"
 
-    protected async Task<List<T>> LoadRequest<T>(
-        string query,
-        Enum entityName
-    )
+    protected async Task<List<T>> LoadRequest<T>(string query, Enum entityName)
         where T : class, new()
     {
-        var envelope = LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query);
-        var response = await Request(ClientXml.LoadRecordsGeneric, envelope);
-
-        var entities =
-            response.Content?.ResponseBody.Entities?.Entity
-            ?? throw new Exception("Erro ao retornar registro");
-
-        return entities;
-    }
-
-    protected async Task<List<T>> UpdateRequest<T>(
-        List<T> requests,
-        Enum entityName
-    )
-        where T : class, new()
-    {
-        var envelope = SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName);
-        var response = await RequestWithOtherResponse(ClientXml.SaveRecordsGeneric, envelope);
-
-        var entities =
-            response.Content?.ResponseBody.Entities?.Entity
-            ?? throw new Exception("Erro ao retornar registro");
-
-        return entities;
-    }
-
-
-    protected async Task<List<T>> InsertRequest<T>(
-        List<T> requests,
-        Enum entityName
-    )
-        where T : class, new()
-    {
-        var envelope = SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName);
-        var response = await RequestWithOtherResponse(ClientXml.SaveRecordsGeneric, envelope);
-
+        var response = await Execute(ClientXml.LoadRecordsGeneric,
+            LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query));
         response.Content?.VerificarErros();
 
         var entities =
             response.Content?.ResponseBody.Entities?.Entity
-            ?? throw new Exception("Erro ao retornar registro");
+            ?? throw new NullReferenceException("Nenhum registro retornado");
 
         return entities;
+    }
 
+    protected async Task<List<T>> UpdateRequest<T>(List<T> requests, Enum entityName)
+        where T : class, new()
+    {
+        var response = await Execute(ClientXml.SaveRecordsGeneric,
+            SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName));
+        response.Content?.VerificarErros();
+
+        var entities =
+            response.Content?.ResponseBody.Entities?.Entity
+            ?? throw new NullReferenceException("Nenhum registro retornado");
+
+        return entities;
+    }
+
+    protected async Task<List<T>> InsertRequest<T>(List<T> requests, Enum entityName)
+        where T : class, new()
+    {
+        var response = await Execute(ClientXml.SaveRecordsGeneric,
+            SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName));
+        response.Content?.VerificarErros();
+
+        var entities =
+            response.Content?.ResponseBody.Entities?.Entity
+            ?? throw new NullReferenceException("Nenhum registro retornado");
+
+        return entities;
     }
 
     #endregion
 
     #region "Public Methods"
-
 
     /// <summary>
     /// Método para mapeamento de dados de uma query em SQL Nativo para uma lista de objetos. 
@@ -191,7 +175,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         var keys = response.FieldsMetadata.Select(a => a.Name).ToList();
         var rows = response.Rows;
 
-        for (var i = 0; i < keys.Count; i++)
+        for (int i = 0; i < keys.Count; i++)
         {
             int order = response.FieldsMetadata[i].Order - 1;
             string key = keys[order];
@@ -202,12 +186,16 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
                 if (fields.Count <= j) fields.Add(new());
                 var value = values[j];
 
-
                 fields[j].Add(key,
                     value switch
                     {
-                        string s => DateTime.TryParseExact(s, "ddMMyyyy HH:mm:ss", CultureInfo.InvariantCulture,
-                            DateTimeStyles.None, out var date) ? date : s.Trim(),
+                        string s =>
+                            DateTime.TryParseExact(
+                                s, "ddMMyyyy HH:mm:ss",
+                                CultureInfo.InvariantCulture,
+                                DateTimeStyles.None, out var date)
+                                ? date
+                                : s.Trim(),
                         _ => value
                     });
             }

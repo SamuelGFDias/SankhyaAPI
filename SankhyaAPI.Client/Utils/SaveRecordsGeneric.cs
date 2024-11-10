@@ -120,7 +120,14 @@ public static class SaveRecordsGeneric
 
             if (xmlElementName == null || value == null) continue;
 
-            localFields.Add(new XElement(xmlElementName, ObjectUtilsMethods.GetFormattedString(value)));
+            // Obtém o valor formatado como string
+            string formattedValue = ObjectUtilsMethods.GetFormattedString(value);
+
+            localFields.Add(formattedValue == string.Empty
+                // Cria o elemento sem valor
+                ? new XElement(xmlElementName)
+                // Cria o elemento com o valor
+                : new XElement(xmlElementName, formattedValue));
         }
 
         return localFields;

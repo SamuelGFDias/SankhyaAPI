@@ -22,7 +22,7 @@ public static class SerializerServiceExtension
 
     public static T? XmlDeserialize<T>(this string str)
     {
-        using TextReader sr = new StringReader(str);
+        using var sr = new StringReader(str);
         return (T?)new XmlSerializer(typeof(T)).Deserialize(sr);
     }
 
@@ -30,7 +30,7 @@ public static class SerializerServiceExtension
     {
         var settings = new JsonSerializerSettings
         {
-            Formatting = (Newtonsoft.Json.Formatting)Formatting.Indented,
+            Formatting = Formatting.Indented,
             StringEscapeHandling = StringEscapeHandling.Default
         };
 

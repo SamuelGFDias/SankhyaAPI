@@ -34,43 +34,43 @@ public abstract class XmlSerialable : IXmlSerializable
 
     public virtual void WriteXml(XmlWriter writer)
     {
-        var properties = GetType().GetProperties();
-        foreach (var property in properties)
-        {
-            if (!ShouldSerializeProperty(property)) continue;
+        //var properties = GetType().GetProperties();
+        //foreach (var property in properties)
+        //{
+        //    if (!ShouldSerializeProperty(property)) continue;
 
-            object? value = property.GetValue(this);
-            if (value == null || string.IsNullOrWhiteSpace(value.ToString())) continue;
+        //    object? value = property.GetValue(this);
+        //    if (value == null || string.IsNullOrWhiteSpace(value.ToString())) continue;
 
-            var xmlElementAttr = property.GetCustomAttribute<XmlElementAttribute>();
-            string? elementName = xmlElementAttr?.ElementName;
+        //    var xmlElementAttr = property.GetCustomAttribute<XmlElementAttribute>();
+        //    string? elementName = xmlElementAttr?.ElementName;
 
-            var primaryKeyAttr = property.GetCustomAttribute<PrimaryKeyElementAttribute>();
-            if (primaryKeyAttr is { AutoEnumerable: false })
-            {
-                elementName = primaryKeyAttr.ElementName;
-            }
+        //    var primaryKeyAttr = property.GetCustomAttribute<PrimaryKeyElementAttribute>();
+        //    if (primaryKeyAttr is { AutoEnumerable: false })
+        //    {
+        //        elementName = primaryKeyAttr.ElementName;
+        //    }
 
-            if (string.IsNullOrEmpty(elementName)) continue;
+        //    if (string.IsNullOrEmpty(elementName)) continue;
 
-            string newValue = ObjectUtilsMethods.GetFormattedString(value);
+        //    string newValue = ObjectUtilsMethods.GetFormattedString(value);
 
-            writer.WriteStartElement(elementName);
-            writer.WriteString(newValue);
-            writer.WriteEndElement();
-        }
+        //    writer.WriteStartElement(elementName);
+        //    writer.WriteString(newValue);
+        //    writer.WriteEndElement();
+        //}
     }
 
 
-    private bool ShouldSerializeProperty(PropertyInfo property)
-    {
-        var xmlIgnoreAttr = property.GetCustomAttribute<XmlIgnoreAttribute>();
-        if (xmlIgnoreAttr != null) return false;
+    //private bool ShouldSerializeProperty(PropertyInfo property)
+    //{
+    //    var xmlIgnoreAttr = property.GetCustomAttribute<XmlIgnoreAttribute>();
+    //    if (xmlIgnoreAttr != null) return false;
 
-        var primaryKeyAttr = property.GetCustomAttribute<PrimaryKeyElementAttribute>();
-        if (primaryKeyAttr is { AutoEnumerable: true }) return false;
+    //    var primaryKeyAttr = property.GetCustomAttribute<PrimaryKeyElementAttribute>();
+    //    if (primaryKeyAttr is { AutoEnumerable: true }) return false;
 
-        object? value = property.GetValue(this);
-        return value != null && !string.IsNullOrWhiteSpace(value.ToString()) ;
-    }
+    //    object? value = property.GetValue(this);
+    //    return value != null && !string.IsNullOrWhiteSpace(value.ToString()) ;
+    //}
 }
