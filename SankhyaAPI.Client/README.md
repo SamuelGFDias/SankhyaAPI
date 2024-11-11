@@ -56,7 +56,7 @@ Inicialmente, é importante destacar que esse pacote foi pensado para um context
     | `ElementName`    | Nome do campo na Entidade      | `string` | sim         | -      |
     | `AutoEnumerable` | Chave com numeração automática | `bool`   | não         | -      |
     ```c#
-    public class ProdutoEntity : XmlSerialable
+    public class ProdutoEntity : SankhyaModelBase
     {
         [PrimaryKeyElement("CODPROD", true)] public long? CodProd { get; set; }
         [XmlElement("CODVOL")] public string? CodVol { get; set; }

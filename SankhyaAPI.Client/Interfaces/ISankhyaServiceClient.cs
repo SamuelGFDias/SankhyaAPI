@@ -13,7 +13,7 @@ public interface ISankhyaServiceClient
     [Post("/service.sbr?serviceName=DbExplorerSP.executeQuery")]
     Task<ApiResponse<ServiceResponse<TEntity>>> Query<TEntity>([Header("Cookie")] string cookie,
         [Body] ServiceRequest<TEntity> entityRequestBody)
-        where TEntity : class;
+        where TEntity : class, new();
 
     [Post("/service.sbr?serviceName=VisualizadorRelatorios.visualizarRelatorio")]
     Task<ApiResponse<ServiceResponse<TEntity>>> VisualizadorRelatorio<TEntity>([Header("Cookie")] string cookie,
@@ -34,17 +34,17 @@ public interface ISankhyaServiceClient
     [Post("/service.sbr?serviceName=CRUDServiceProvider.loadRecords")]
     Task<ApiResponse<ServiceResponse<TEntity>>> LoadRecordsGeneric<TEntity>([Header("Cookie")] string cookie,
         [Body] ServiceRequest<TEntity> entityRequestBody)
-        where TEntity : class;
+        where TEntity : class, new();
 
     [Post("/service.sbr?serviceName=CRUDServiceProvider.saveRecord")]
     Task<ApiResponse<ServiceResponse<TEntity>>> SaveRecordsGeneric<TEntity>(
         [Header("Cookie")] string cookie,
-        [Body] ServiceRequest<TEntity> entityRequestBody) where TEntity : class;
+        [Body] ServiceRequest<TEntity> entityRequestBody) where TEntity : class, new();
 
     [Post("/service.sbr?serviceName=CRUDServiceProvider.saveRecord")]
     Task<ApiResponse<ServiceResponse<TEntityResponse>>> SaveRecordsGeneric<TEntityRequest, TEntityResponse>(
         [Header("Cookie")] string cookie,
         [Body] ServiceRequest<TEntityRequest> entityRequestBody)
-        where TEntityRequest : class
-        where TEntityResponse : class;
+        where TEntityRequest : class, new()
+        where TEntityResponse : class, new();
 }

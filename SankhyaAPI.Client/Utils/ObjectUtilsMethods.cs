@@ -131,7 +131,7 @@ public static class ObjectUtilsMethods
 
                 dynamic? value = field.Value[i];
 
-                // Não tirar ? do `value`
+                // Não tirar ? do `convertedValue`
                 dynamic? convertedValue = ConvertForPropertyType(value?.ToString() ?? "", prop);
 
                 prop.SetValue(objectDest, convertedValue);

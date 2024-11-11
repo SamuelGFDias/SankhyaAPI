@@ -16,7 +16,7 @@ public abstract class
         IOptions<SankhyaClientSettings> sankhyaApiConfig,
         Enum entityName)
     : SessionService(sankhyaApiConfig), IBaseService<T>
-    where T : class, IXmlSerializable, new()
+    where T : class, IModelBase, new()
 
 {
     /// <summary>

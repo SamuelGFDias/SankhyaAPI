@@ -1,6 +1,4 @@
-﻿using Azure;
-using Azure.Core;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Refit;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
@@ -29,7 +27,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
 
     private async Task<LoginEntity> Login(string usuario, string interno)
     {
-        var request = new ServiceRequest<LoginEntity>
+        ServiceRequest<LoginEntity> request = new ServiceRequest<LoginEntity>
         {
             OutputType = "xml",
             ServiceName = ServiceNames.MobileLoginSpLogin,
@@ -47,7 +45,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
 
     private async Task Logout(string sessionId)
     {
-        var apiResponse = await ClientXml.Logout($"{sessionId}.master");
+        ApiResponse<ServiceResponse<object>> apiResponse = await ClientXml.Logout($"{sessionId}.master");
         apiResponse.Content?.VerificarErros();
     }
 
@@ -66,7 +64,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         where T : class, new()
     {
         await LoginSankhya(_sankhyaConfig.Usuario, _sankhyaConfig.Senha);
-        var response = await client(JSessionId, envelope);
+        ApiResponse<ServiceResponse<T>> response = await client(JSessionId, envelope);
         await LogoutSankhya();
         return response;
     }
@@ -74,7 +72,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     private async Task<ResponseBody<T>> ExecuteQuery<T>(string script)
         where T : class, new()
     {
-        var response = await Execute(ClientJson.Query, ExecuteQueryGeneric.CreateQueryEnvelope<T>(script));
+        ApiResponse<ServiceResponse<T>> response = await Execute(ClientJson.Query, ExecuteQueryGeneric.CreateQueryEnvelope<T>(script));
 
         if (response.Content?.ResponseBody == null)
         {
@@ -92,11 +90,11 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     protected async Task<List<T>> LoadRequest<T>(string query, Enum entityName)
         where T : class, new()
     {
-        var response = await Execute(ClientXml.LoadRecordsGeneric,
+        ApiResponse<ServiceResponse<T>> response = await Execute(ClientXml.LoadRecordsGeneric,
             LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query));
         response.Content?.VerificarErros();
 
-        var entities =
+        List<T> entities =
             response.Content?.ResponseBody.Entities?.Entity
             ?? throw new NullReferenceException("Nenhum registro retornado");
 
@@ -106,11 +104,11 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     protected async Task<List<T>> UpdateRequest<T>(List<T> requests, Enum entityName)
         where T : class, new()
     {
-        var response = await Execute(ClientXml.SaveRecordsGeneric,
+        ApiResponse<ServiceResponse<T>> response = await Execute(ClientXml.SaveRecordsGeneric,
             SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName));
         response.Content?.VerificarErros();
 
-        var entities =
+        List<T> entities =
             response.Content?.ResponseBody.Entities?.Entity
             ?? throw new NullReferenceException("Nenhum registro retornado");
 
@@ -120,11 +118,11 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     protected async Task<List<T>> InsertRequest<T>(List<T> requests, Enum entityName)
         where T : class, new()
     {
-        var response = await Execute(ClientXml.SaveRecordsGeneric,
+        ApiResponse<ServiceResponse<T>> response = await Execute(ClientXml.SaveRecordsGeneric,
             SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName));
         response.Content?.VerificarErros();
 
-        var entities =
+        List<T> entities =
             response.Content?.ResponseBody.Entities?.Entity
             ?? throw new NullReferenceException("Nenhum registro retornado");
 
@@ -143,48 +141,48 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     /// <returns></returns>
     public async Task<List<T>> Query<T>(string script) where T : class, new()
     {
-        var response = await ExecuteQuery<T>(script);
+        ResponseBody<T> response = await ExecuteQuery<T>(script);
 
         if (response.FieldsMetadata is null) return [];
 
-        var fields = new Dictionary<string, List<dynamic>?>();
-        var keys = response.FieldsMetadata.Select(a => a.Name).ToList();
-        var rows = response.Rows;
+        Dictionary<string, List<object>?> fields = new Dictionary<string, List<object>?>();
+        List<string> keys = response.FieldsMetadata.Select(a => a.Name).ToList();
+        List<List<object>>? rows = response.Rows;
 
         for (int i = 0; i < keys.Count; i++)
         {
             int order = response.FieldsMetadata[i].Order - 1;
             string key = keys[order];
-            var values = rows?.Select(t => t[order]).ToList();
+            List<object>? values = rows?.Select(t => t[order]).ToList();
 
             fields.Add(key, values);
         }
 
-        var list = ObjectUtilsMethods.GetListOfObjectsFromDictionary<T>(fields);
+        List<T> list = ObjectUtilsMethods.GetListOfObjectsFromDictionary<T>(fields);
 
         return list;
     }
 
     public async Task<List<Dictionary<string, dynamic?>>> Query(string script)
     {
-        var response = await ExecuteQuery<object>(script);
+        ResponseBody<object> response = await ExecuteQuery<object>(script);
 
         if (response.FieldsMetadata is null) return [];
 
-        var fields = new List<Dictionary<string, dynamic?>>();
-        var keys = response.FieldsMetadata.Select(a => a.Name).ToList();
-        var rows = response.Rows;
+        List<Dictionary<string, object?>> fields = new List<Dictionary<string, object?>>();
+        List<string> keys = response.FieldsMetadata.Select(a => a.Name).ToList();
+        List<List<object>>? rows = response.Rows;
 
         for (int i = 0; i < keys.Count; i++)
         {
             int order = response.FieldsMetadata[i].Order - 1;
             string key = keys[order];
-            var values = rows?.Select(t => t[order]).ToList();
+            List<object>? values = rows?.Select(t => t[order]).ToList();
 
             for (int j = 0; j < values?.Count; j++)
             {
                 if (fields.Count <= j) fields.Add(new());
-                var value = values[j];
+                object value = values[j];
 
                 fields[j].Add(key,
                     value switch
@@ -193,7 +191,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
                             DateTime.TryParseExact(
                                 s, "ddMMyyyy HH:mm:ss",
                                 CultureInfo.InvariantCulture,
-                                DateTimeStyles.None, out var date)
+                                DateTimeStyles.None, out DateTime date)
                                 ? date
                                 : s.Trim(),
                         _ => value
@@ -212,7 +210,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     /// <returns>O retorno será a classe <see cref="LoginEntity"/> com as propriedades referentes a sessão</returns>
     public async Task<LoginEntity> LoginSankhya(string usuario, string interno)
     {
-        var login = await Login(usuario, interno);
+        LoginEntity login = await Login(usuario, interno);
         _sessionId = login.SessionId;
         JSessionId = login.JSessionId;
         return login;

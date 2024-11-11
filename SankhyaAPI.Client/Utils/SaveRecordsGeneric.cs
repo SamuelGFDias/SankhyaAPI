@@ -38,7 +38,6 @@ public static class SaveRecordsGeneric
         };
         envelope.RequestBody.DataSet.SetRootEntity(entityName);
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
-
         return envelope;
     }
 

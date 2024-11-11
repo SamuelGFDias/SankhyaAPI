@@ -6,7 +6,7 @@ namespace SankhyaAPI.Client.Utils;
 
 public static class ExecuteQueryGeneric
 {
-    public static ServiceRequest<T> CreateQueryEnvelope<T>(string script) where T : class
+    public static ServiceRequest<T> CreateQueryEnvelope<T>(string script) where T : class, new()
     {
         var envelope = new ServiceRequest<T>
         {
