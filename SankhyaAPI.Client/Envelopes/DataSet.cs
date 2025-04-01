@@ -10,7 +10,7 @@ public class DataSet
     [XmlAttribute(AttributeName = "rootEntity")]
     public string? RootEntity
     {
-        get => _rootEntity != null ? ObjectUtilsMethods.GetXmlEnumValue(_rootEntity) : string.Empty;
+        get => _rootEntity != null ? _rootEntity.GetXmlEnumValue() : string.Empty;
         set { }
     }
 

@@ -6,9 +6,9 @@
 /// <typeparam name="T"></typeparam>
 public interface IBaseService<T>
 {
-    Task<List<T>> Inserir(List<T> requests);
-    Task<T> Inserir(T request);
-    Task<List<T>> Atualizar(List<T> requests);
-    Task<T> Atualizar(T request);
-    Task<List<T>> Recuperar(string query);
+    Task<List<T>> CreateManyAsync(List<T> requests);
+    Task<T> CreateAsync(T request);
+    Task<List<T>> UpdateManyAsync(List<T> requests);
+    Task<T> UpdateAsync(T request);
+    Task<List<T>> FindAsync(string query);
 }

@@ -30,13 +30,13 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         ServiceRequest<LoginEntity> request = new ServiceRequest<LoginEntity>
         {
             OutputType = "xml",
-            ServiceName = ServiceNames.MobileLoginSpLogin,
             RequestBody = new RequestBody<LoginEntity>
             {
                 NomeUsu = usuario,
                 Interno = interno
             }
         };
+        request.SetServiceName(EServiceNames.Login);
         _apiResponse = await ClientXml.Login(request);
         _apiResponse?.Content?.VerificarErros();
         ValidaResponseBodyLogin();
@@ -94,11 +94,9 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
             LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query));
         response.Content?.VerificarErros();
 
-        List<T> entities =
-            response.Content?.ResponseBody.Entities?.Entity
-            ?? throw new NullReferenceException("Nenhum registro retornado");
+        List<T>? entities = response.Content?.ResponseBody.Entities?.Entity;
 
-        return entities;
+        return entities ?? [];
     }
 
     protected async Task<List<T>> UpdateRequest<T>(List<T> requests, Enum entityName)
@@ -108,25 +106,22 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
             SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName));
         response.Content?.VerificarErros();
 
-        List<T> entities =
-            response.Content?.ResponseBody.Entities?.Entity
-            ?? throw new NullReferenceException("Nenhum registro retornado");
+        List<T>? entities = response.Content?.ResponseBody.Entities?.Entity;
 
-        return entities;
+        return entities ?? [];
     }
 
-    protected async Task<List<T>> InsertRequest<T>(List<T> requests, Enum entityName)
+    protected async Task<List<T>> CreateRequest<T>(List<T> requests, Enum entityName)
         where T : class, new()
     {
         ApiResponse<ServiceResponse<T>> response = await Execute(ClientXml.SaveRecordsGeneric,
             SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName));
         response.Content?.VerificarErros();
 
-        List<T> entities =
-            response.Content?.ResponseBody.Entities?.Entity
-            ?? throw new NullReferenceException("Nenhum registro retornado");
+        List<T>? entities =
+            response.Content?.ResponseBody.Entities?.Entity;
 
-        return entities;
+        return entities ?? [];
     }
 
     #endregion
@@ -139,7 +134,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
     /// <typeparam name="T"></typeparam>
     /// <param name="script">Parâmetro que recebe script em SQL Nativo para retorno de dados.</param>
     /// <returns></returns>
-    public async Task<List<T>> Query<T>(string script) where T : class, new()
+    protected async Task<List<T>> Query<T>(string script) where T : class, new()
     {
         ResponseBody<T> response = await ExecuteQuery<T>(script);
 
@@ -163,7 +158,7 @@ public class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
         return list;
     }
 
-    public async Task<List<Dictionary<string, dynamic?>>> Query(string script)
+    protected async Task<List<Dictionary<string, dynamic?>>> Query(string script)
     {
         ResponseBody<object> response = await ExecuteQuery<object>(script);
 

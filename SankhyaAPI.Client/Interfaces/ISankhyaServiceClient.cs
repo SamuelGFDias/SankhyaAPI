@@ -41,10 +41,8 @@ public interface ISankhyaServiceClient
         [Header("Cookie")] string cookie,
         [Body] ServiceRequest<TEntity> entityRequestBody) where TEntity : class, new();
 
-    [Post("/service.sbr?serviceName=CRUDServiceProvider.saveRecord")]
-    Task<ApiResponse<ServiceResponse<TEntityResponse>>> SaveRecordsGeneric<TEntityRequest, TEntityResponse>(
+    [Post("/service.sbr?serviceName=CRUDServiceProvider.removeRecord")]
+    Task<ApiResponse<ServiceResponse<TEntity>>> RemoveRecordsGeneric<TEntity>(
         [Header("Cookie")] string cookie,
-        [Body] ServiceRequest<TEntityRequest> entityRequestBody)
-        where TEntityRequest : class, new()
-        where TEntityResponse : class, new();
+        [Body] ServiceRequest<TEntity> entityRequestBody) where TEntity : class, new();
 }

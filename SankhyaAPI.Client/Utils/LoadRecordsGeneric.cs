@@ -8,7 +8,7 @@ namespace SankhyaAPI.Client.Utils;
 /// <summary>
 /// Utilitário para carregar registros genéricos a partir da API Sankhya.
 /// </summary>
-public class LoadRecordsGeneric
+internal class LoadRecordsGeneric
 {
     /// <summary>
     /// Cria um envelope de requisição para carregar registros.
@@ -28,7 +28,6 @@ public class LoadRecordsGeneric
     {
         var envelope = new ServiceRequest<T>
         {
-            ServiceName = ServiceNames.CrudServiceProviderLoadRecords,
             RequestBody = new RequestBody<T>
             {
                 DataSet = new DataSet
@@ -48,6 +47,7 @@ public class LoadRecordsGeneric
             Path = "",
             Field = ObjectUtilsMethods.GetFieldsFromObject(new T())
         };
+        envelope.SetServiceName(EServiceNames.RemoveRecords);
         envelope.RequestBody.DataSet.SetRootEntity(entityName);
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
         return envelope;

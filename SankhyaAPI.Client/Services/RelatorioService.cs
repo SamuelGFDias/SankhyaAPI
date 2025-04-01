@@ -1,9 +1,12 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Azure.Core;
+using Microsoft.Extensions.Options;
+using Refit;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.MetaData;
 using SankhyaAPI.Client.Providers;
 using SankhyaAPI.Client.Requests;
+using SankhyaAPI.Client.Responses;
 
 namespace SankhyaAPI.Client.Services;
 
@@ -16,7 +19,6 @@ public sealed class RelatorioService(IOptions<SankhyaClientSettings> sankhyaApiC
     {
         var envelope = new ServiceRequest<string>()
         {
-            ServiceName = ServiceNames.VisualizadorRelatorios,
             RequestBody = new RequestBody<string>
             {
                 Relatorio = new Relatorio
@@ -26,11 +28,12 @@ public sealed class RelatorioService(IOptions<SankhyaClientSettings> sankhyaApiC
                 }
             }
         };
+        envelope.SetServiceName(EServiceNames.VisualizadorRelatorios);
 
         try
         {
             await LoginSankhya(_sankhyaConfig.Usuario, _sankhyaConfig.Senha);
-            var response = await ClientXml.VisualizadorRelatorio(JSessionId, envelope);
+            ApiResponse<ServiceResponse<string>> response = await ClientXml.VisualizadorRelatorio(JSessionId, envelope);
             response.Content!.VerificarErros();
             return response.Content!.ResponseBody.Chave!.Valor!;
         }
@@ -45,13 +48,13 @@ public sealed class RelatorioService(IOptions<SankhyaClientSettings> sankhyaApiC
     {
         try
         {
-            var response = await ClientFile.ObterRelatorio(JSessionId, key);
+            ApiResponse<Stream> response = await ClientFile.ObterRelatorio(JSessionId, key);
             if (response.Content == null)
             {
                 throw new Exception("O conteúdo do relatório é nulo");
             }
 
-            var content = response.Content;
+            Stream? content = response.Content;
 
             return content;
         }

@@ -24,9 +24,9 @@ public abstract class
     /// </summary>
     /// <param name="requests" ref= "T"> Espera uma lista de <typeparamref name="T"/> para inserir.</param>
     /// <returns>Retorna uma lista de <typeparamref name="T"/></returns>
-    public async Task<List<T>> Inserir(List<T> requests)
+    public async Task<List<T>> CreateManyAsync(List<T> requests)
     {
-        return await InsertRequest(requests, entityName);
+        return await CreateRequest(requests, entityName);
     }
 
     /// <summary>
@@ -34,9 +34,9 @@ public abstract class
     /// </summary>
     /// <param name="request" ref= "T"> Espera uma instancia de <typeparamref name="T"/> para inserir.</param>
     /// <returns>Retorna uma instância de <typeparamref name="T"/></returns>
-    public async Task<T> Inserir(T request)
+    public async Task<T> CreateAsync(T request)
     {
-        var response = await Inserir([request]);
+        List<T> response = await CreateManyAsync([request]);
         return response.First();
     }
 
@@ -45,7 +45,7 @@ public abstract class
     /// </summary>
     /// <param name="requests" ref= "T"> Espera uma lista de <typeparamref name="T"/> para atualizar.</param>
     /// <returns>Retorna uma lista de <typeparamref name="T"/></returns>
-    public async Task<List<T>> Atualizar(List<T> requests)
+    public async Task<List<T>> UpdateManyAsync(List<T> requests)
     {
         return await UpdateRequest(requests, entityName);
     }
@@ -55,9 +55,9 @@ public abstract class
     /// </summary>
     /// <param name="request" ref= "T"> Espera uma instancia de <typeparamref name="T"/> para atualizar.</param>
     /// <returns>Retorna uma instância de <typeparamref name="T"/></returns>
-    public async Task<T> Atualizar(T request)
+    public async Task<T> UpdateAsync(T request)
     {
-        var response = await Atualizar([request]);
+        List<T> response = await UpdateManyAsync([request]);
         return response.First();
     }
 
@@ -66,8 +66,18 @@ public abstract class
     /// </summary>
     /// <param name="query"></param>
     /// <returns>Retorna uma lista de <typeparamref name="T"/></returns>
-    public async Task<List<T>> Recuperar(string query)
+    public async Task<List<T>> FindAsync(string query)
     {
         return await LoadRequest<T>(query, entityName);
+    }
+
+    public async Task<List<T>> QueryRawAsync(string script)
+    {
+        return await Query<T>(script);
+    }
+    
+    public async Task<List<Dictionary<string, object?>>> QueryAsDictionaryAsync(string script)
+    {
+        return await Query(script);
     }
 }

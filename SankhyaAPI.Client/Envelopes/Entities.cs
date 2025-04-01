@@ -33,20 +33,20 @@ public class Entities<TEntity> : IXmlSerializable where TEntity : class
             while (reader.ReadToFollowing("entity"))
             {
                 var entityInstance = Activator.CreateInstance<TEntity>();
-                var properties = entityInstance.GetType().GetProperties();
+                PropertyInfo[] properties = entityInstance.GetType().GetProperties();
                 reader.Read(); // Entra no elemento <entity>
 
                 // Itera sobre as propriedades e mapeia cada uma delas para o XML
                 for (int i = 0; i < properties.Length; i++)
                 {
-                    var property = properties[i];
+                    PropertyInfo property = properties[i];
                     string? xmlElementName = property.GetXmlElementName();
 
                     if (xmlElementName == null ||
                         !reader.IsStartElement(xmlElementName) && !reader.IsStartElement($"f{i}")) continue;
 
                     string value = reader.ReadElementContentAsString();
-                    var convertedValue = ObjectUtilsMethods.ConvertForPropertyType(value, property);
+                    object? convertedValue = ObjectUtilsMethods.ConvertForPropertyType(value, property);
 
                     property.SetValue(entityInstance, convertedValue);
                 }
@@ -69,13 +69,13 @@ public class Entities<TEntity> : IXmlSerializable where TEntity : class
             writer.WriteEndElement();
         }
 
-        foreach (var entity in Entity)
+        foreach (TEntity? entity in Entity)
         {
             writer.WriteStartElement("entity");
 
-            var properties = entity.GetType().GetProperties();
+            PropertyInfo[] properties = entity.GetType().GetProperties();
 
-            foreach (var property in properties)
+            foreach (PropertyInfo? property in properties)
             {
                 string? xmlElementName = property.GetXmlElementName();
 

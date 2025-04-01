@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using SankhyaAPI.Client.Interfaces;
+using SankhyaAPI.Client.MetaData;
 
 namespace SankhyaAPI.Client.Extensions;
 
@@ -18,9 +19,10 @@ public class SankhyaModelBase : IModelBase
         PropertyInfo[] properties = obj.GetType().GetProperties();
         return properties.All(p =>
         {
-            var isNullable = Nullable.GetUnderlyingType(p.PropertyType);
+            Type? isNullable = Nullable.GetUnderlyingType(p.PropertyType);
             bool isValueType = p.PropertyType.IsValueType;
-            return isNullable != null || !isValueType;
+            bool isNullableState = p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(NullableState<>);
+            return isNullable != null || !isValueType || isNullableState;
         });
     }
 }

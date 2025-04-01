@@ -1,19 +1,13 @@
-﻿namespace SankhyaAPI.Client.MetaData;
+﻿using System.Xml.Serialization;
 
-public static class ServiceNames
+namespace SankhyaAPI.Client.MetaData;
+
+public enum EServiceNames
 {
-    public enum ServiceName
-    {
-        DbExplorerSpExecuteQuery,
-        MobileLoginSpLogin,
-        CrudServiceProviderLoadRecords,
-        CrudServiceProviderSaveRecords,
-        VisualizadorRelatorios
-    }
-
-    public const string DbExplorerSpExecuteQuery = "DbExplorerSP.executeQuery";
-    public const string MobileLoginSpLogin = "MobileLoginSP.login";
-    public const string CrudServiceProviderLoadRecords = "CRUDServiceProvider.loadRecords";
-    public const string CrudServiceProviderSaveRecords = "CRUDServiceProvider.saveRecord";
-    public const string VisualizadorRelatorios = "VisualizadorRelatorios.visualizarRelatorio";
+    [XmlEnum("DbExplorerSP.executeQuery")] ExecuteQuery,
+    [XmlEnum("MobileLoginSP.login")] Login,
+    [XmlEnum("CRUDServiceProvider.loadRecords")] LoadRecords,
+    [XmlEnum("CRUDServiceProvider.saveRecord")] SaveRecords,
+    [XmlEnum("VisualizadorRelatorios.visualizarRelatorio")] VisualizadorRelatorios,
+    [XmlEnum("CRUDServiceProvider.removeRecords")] RemoveRecords
 }

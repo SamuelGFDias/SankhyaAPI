@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Xml.Serialization;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
+using SankhyaAPI.Client.MetaData;
 
 namespace SankhyaAPI.Client.Utils;
 
@@ -13,7 +14,7 @@ public static class ObjectUtilsMethods
     public static List<Field> GetFieldsFromObject(object obj)
     {
         PropertyInfo[] props = PropertiesFromObject(obj);
-
+        
         return props.Select(t => new Field { Nome = t.GetXmlElementName() }).ToList();
     }
 
@@ -25,20 +26,62 @@ public static class ObjectUtilsMethods
             decimal d => d.ToString("G", CultureInfo.InvariantCulture),
             double db => db.ToString("G", CultureInfo.InvariantCulture),
             Enum e => e.GetXmlEnumValue(),
-            DateTime dt => dt == default ? "" : dt.ToString("dd/MM/yyyy HH:mm:ss"),
-            DateOnly dt => dt == default ? "" : dt.ToString("dd/MM/yyyy"),
-            TimeOnly time => time == default ? "" : time.ToString("HHmm"),
+            DateTime dt => dt.ToString("dd/MM/yyyy HH:mm:ss"),
+            DateOnly dt => dt.ToString("dd/MM/yyyy"),
+            TimeOnly time => time.ToString("HHmm"),
             bool b => b ? "S" : "N",
             _ => value.ToString()!
         };
+
+    public static string? GetFormattedString<T>(this T obj, PropertyInfo property)
+    {
+        object? value = property.GetValue(obj);
+
+        if (value == null)
+            return null;
+
+        Type propertyType = GetPropertyValueType(property.PropertyType);
+
+        return propertyType switch
+        {
+            // Caso seja string
+            _ when propertyType == typeof(string) => (value as string)?.Trim(),
+
+            // Caso seja float
+            _ when propertyType == typeof(float) => ((float)value).ToString("G", CultureInfo.InvariantCulture),
+
+            // Caso seja decimal
+            _ when propertyType == typeof(decimal) => ((decimal)value).ToString("G", CultureInfo.InvariantCulture),
+
+            // Caso seja double
+            _ when propertyType == typeof(double) => ((double)value).ToString("G", CultureInfo.InvariantCulture),
+
+            // Caso seja enum
+            _ when propertyType.IsEnum => ((Enum)value).GetXmlEnumValue(),
+
+            // Caso seja DateTime
+            _ when propertyType == typeof(DateTime) => ((DateTime)value).ToString("dd/MM/yyyy HH:mm:ss"),
+
+            // Caso seja DateOnly
+            _ when propertyType == typeof(DateOnly) => ((DateOnly)value).ToString("dd/MM/yyyy"),
+
+            // Caso seja TimeOnly
+            _ when propertyType == typeof(TimeOnly) => ((TimeOnly)value).ToString("HHmm"),
+
+            // Caso seja bool
+            _ when propertyType == typeof(bool) => (bool)value ? "S" : "N",
+
+            // Caso nenhum dos tipos acima seja encontrado
+            _ => value.ToString()
+        };
+    }
+
 
     public static object? ConvertForPropertyType(string xmlElementValue, PropertyInfo property)
     {
         try
         {
-            Type? propertyType = Nullable.GetUnderlyingType(property.PropertyType);
-
-            propertyType ??= property.PropertyType;
+            Type? propertyType = GetPropertyValueType(property.PropertyType);
 
             if (string.IsNullOrWhiteSpace(xmlElementValue) && propertyType != typeof(bool)) return null;
 
@@ -81,13 +124,13 @@ public static class ObjectUtilsMethods
                 // Conversão para Enums
                 { IsEnum: true } => GetEnumValueFromXml(propertyType, xmlElementValue),
 
-                // Conversão para Booleano
+                // Conversão para Boolean
                 not null when propertyType == typeof(bool) => xmlElementValue switch
                 {
                     "S" => true,
                     "N" => false,
                     "" => false,
-                    _ => throw new Exception($"Valor '{xmlElementValue}' não é um booleano válido")
+                    _ => throw new Exception($"Valor '{xmlElementValue}' não é um boolean válido")
                 },
 
                 // Conversão para String
@@ -100,7 +143,15 @@ public static class ObjectUtilsMethods
                 _ => Convert.ChangeType(xmlElementValue, propertyType!)
             };
 
-            return convertedValue;
+            if (property.PropertyType is not { IsGenericType: true } genericType ||
+                genericType.GetGenericTypeDefinition() != typeof(NullableState<>)) return convertedValue;
+
+            // Obtém o tipo genérico subjacente (T)
+            Type innerType = property.PropertyType.GetGenericArguments()[0];
+
+            // Cria a instância de NullableState<T> dinamicamente
+            Type nullableStateType = typeof(NullableState<>).MakeGenericType(innerType);
+            return Activator.CreateInstance(nullableStateType, convertedValue);
         }
         catch (Exception ex)
         {
@@ -116,7 +167,7 @@ public static class ObjectUtilsMethods
 
         int maxCount = fields.Values.Max(list => list?.Count ?? 0);
 
-        List<T> objs = new List<T>();
+        var objs = new List<T>();
 
         for (int i = 0; i < maxCount; i++)
         {
@@ -125,13 +176,15 @@ public static class ObjectUtilsMethods
 
             foreach (PropertyInfo prop in props)
             {
-                KeyValuePair<string, List<dynamic>?> field = fields.FirstOrDefault(a => a.Key == prop.GetXmlElementName());
+                KeyValuePair<string, List<dynamic>?> field =
+                    fields.FirstOrDefault(a => a.Key == prop.GetXmlElementName());
 
                 if (field.Value == null || field.Value.Count <= i) continue;
 
                 dynamic? value = field.Value[i];
 
-                // Não tirar ? do `convertedValue`
+                // Não tirar? do convertedValue
+                // ReSharper disable once ConditionalAccessQualifierIsNonNullableAccordingToAPIContract
                 dynamic? convertedValue = ConvertForPropertyType(value?.ToString() ?? "", prop);
 
                 prop.SetValue(objectDest, convertedValue);
@@ -203,7 +256,7 @@ public static class ObjectUtilsMethods
                             "Os campos que fazem parte da chave primária não podem estar vazios em operações de atualização.");
                     case false when value != null:
                         throw new ArgumentException(
-                            "Os campos que fazem parte da chave primária com atributos autoenumerados não podem estar preenchidos em operações de inserção.",
+                            "Os campos que fazem parte da chave primária com atributos auto enumerados não podem estar preenchidos em operações de inserção.",
                             property.Name);
                 }
             }
@@ -211,7 +264,7 @@ public static class ObjectUtilsMethods
     }
 
     public static T GetEnumValueFromXml<T>(string xmlValue)
-    where T : Enum
+        where T : Enum
     {
         Type enumType = typeof(T);
         FieldInfo[] fields = enumType.GetFields();
@@ -234,10 +287,26 @@ public static class ObjectUtilsMethods
             : throw new ArgumentException($"Valor '{xmlValue}' não é válido para o enum '{enumType.Name}'");
     }
 
+    //public static PropertyState GetPropertyState<T>(PropertyInfo propertyInfo)
+    //{
+    //    return nullableState.State;
+    //}
+
+    public static Type GetPropertyValueType(this Type propertyType)
+    {
+        Type? type = NullableState.GetUnderlyingType(propertyType);
+
+        type ??= Nullable.GetUnderlyingType(propertyType);
+
+        type ??= propertyType;
+
+        return type;
+    }
     #endregion
 
 
     #region PrivateMethods
+
 
     private static PropertyInfo[] PropertiesFromObject(object obj)
     {

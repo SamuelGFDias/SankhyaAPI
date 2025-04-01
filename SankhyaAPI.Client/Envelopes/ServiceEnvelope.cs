@@ -2,16 +2,28 @@
 using System.Text.Json.Serialization;
 using System.Xml.Serialization;
 using Newtonsoft.Json;
+using SankhyaAPI.Client.MetaData;
+using SankhyaAPI.Client.Utils;
 
 namespace SankhyaAPI.Client.Envelopes;
 
 public abstract class ServiceEnvelope<TEntity> where TEntity : class
 {
     private string? _statusMessage;
+    private EServiceNames? _serviceName;
 
     [JsonPropertyName("serviceName")]
     [XmlAttribute(AttributeName = "serviceName")]
-    public string ServiceName { get; set; } = string.Empty;
+    public string ServiceName
+    {
+        get => _serviceName != null ? _serviceName.GetXmlEnumValue() : string.Empty;
+        set { }
+    }
+
+    public void SetServiceName(EServiceNames serviceNames)
+    {
+        _serviceName = serviceNames;
+    }
 
     [System.Text.Json.Serialization.JsonIgnore]
     [Newtonsoft.Json.JsonIgnore]
@@ -51,11 +63,11 @@ public abstract class ServiceEnvelope<TEntity> where TEntity : class
         get => _statusMessage;
         set
         {
-            var message = value?.Replace("<![CDATA[", "").Replace("]]>", "");
+            string? message = value?.Replace("<![CDATA[", "").Replace("]]>", "");
             if (message == null) return;
             try
             {
-                var base64Bytes = Convert.FromBase64String(message);
+                byte[] base64Bytes = Convert.FromBase64String(message);
                 _statusMessage = Encoding.GetEncoding("ISO-8859-1").GetString(base64Bytes);
             }
             catch
