@@ -1,4 +1,5 @@
-﻿# 👜 SankhyaAPI.Client
+﻿
+# 👜 SankhyaAPI.Client
 
 ![GitHub issues](https://img.shields.io/github/issues/SamuelGFDias/SankhyaAPI)
 ![GitHub forks](https://img.shields.io/github/forks/SamuelGFDias/SankhyaAPI)
@@ -21,128 +22,102 @@ Projeto de integração com ERP Sankhya para operação de CRUD!
 
 Este projeto tem como objetivo disponibilizar, de maneira mais sucinta, métodos mais utilizados para manipulações e retornos de dados. Utilizando a própria API do Sankhya disponível [aqui](https://developer.sankhya.com.br/reference/api-de-integra%C3%A7%C3%B5es-sankhya), o projeto abstrai os métodos para o usuário.
 
-
 ## 📦 Instalação
+
 1. Na raiz do seu projeto, use o seguinte comando:
    ```bash
    dotnet add package SankhyaAPI.Client --version x.y.z
+   ```
 
 ## ⚙ Configuração
 
-Inicialmente, é importante destacar que esse pacote foi pensado para um contexto de injeção de dependência. Então, as configurações abaixo mostram como configurá-la na mesma.
+Este pacote foi pensado para uso com injeção de dependência.
 
-1. Para configurar o pacote para ser usado em seu projeto, é necessário carregar a classe `SankhyaClientSettings` no namespace `SankhyaAPI.Client.Providers`. Essa classe deve ser injetada dentro das configurações do seu ser IServiceCollection como no exemplo abaixo.
+1. Configure o `SankhyaClientSettings`:
+   ```csharp
+   SankhyaClientSettings sankhyaSettings = new SankhyaClientSettings();
+   sankhyaSettings.BaseUrl = "https://seusistema.sankhya.com";
+   sankhyaSettings.Usuario = "usuario";
+   sankhyaSettings.Senha = "senha";
+   builder.Services.Configure<SankhyaClientSettings>(sankhyaSettings);
+   ```
 
-    | Campo     | Descrição                                 |
-    |-----------|-------------------------------------------|
-    | `BaseUrl` | URL de conexão com aplicação SANKHYA      |
-    | `Usuario` | Usuário que será utilizado para operações |
-    | `Senha`   | Senha do Usuário                          |
-    ```c#
-    SankhyaClientSettings sankhyaSettings = new SankhyaClientSettings();
-    sankhyaSettings.BaseUrl = "https://seusistema.sankhya.com";
-    sankhyaSettings.Usuario = "usuario";
-    sankhyaSettings.Senha = "senha";
-    builder.Services.Configure<SankhyaClientSettings>(sankhyaSettings);
-2.  É importante também injetar o serviço `builder.Services.AddSankhyaClient();` para que a classes de serviços estejam configuradas na injeção de dependência da sua solução.
+2. Injete o serviço:
+   ```csharp
+   builder.Services.AddSankhyaClient();
+   ```
 
+## 🧠 Validação de modelos
 
-## Funcionalidades
+Todos os modelos devem herdar de `SankhyaModelBase`. Todas as propriedades devem ser `NullableState<T>`. As chaves primárias (com atributo `[Key]`) devem estar com:
 
-1. Para utilização nas três operações principais disponíveis `Update`, `Insert` e `Select`. É necessário mapear a entidade de desejada para um objeto. Um exemplo é a entidade Produto, abaixo estão algumas propriedades da mesma. Campos pertencentes à chave primária devem ter o atributo `PrimaryKeyElement`.
+- `AutoEnumerable == true`: obrigatoriamente `UnSet`
+- `AutoEnumerable == false`: obrigatoriamente `Set`
+- Nunca podem estar com `Clear`
 
-    | Campo            | Descrição                      | Tipo     | Obrigatório | Padrão |
-    |------------------|--------------------------------|----------|-------------|--------|
-    | `ElementName`    | Nome do campo na Entidade      | `string` | sim         | -      |
-    | `AutoEnumerable` | Chave com numeração automática | `bool`   | não         | -      |
-    ```c#
-    public class ProdutoEntity : SankhyaModelBase
-    {
-        [PrimaryKeyElement("CODPROD", true)] public long? CodProd { get; set; }
-        [XmlElement("CODVOL")] public string? CodVol { get; set; }
-        [XmlElement("DESCRPROD")] public string? DescrProd { get; set; }
-        [XmlElement("REFFORN")] public string? RefForn { get; set; }
-    }
-    # obs: É indicado mapear todas as propriedades como nullable
-2. Para criar a classe de serviço que vai operar nesse entidade é necessário passar como parâmetro um `IOptions<SankhyaClientSettings>` , a classe que representa a entidade e um `Enum` representando a instância da entidade (o mesmo deve utilizar o atributo `XmlEnum` com o nome da instância):
-    ```c#
-    public enum EEntityNames
-    {
-        [XmlEnum("Produto")] Produto,
-    }
+## ⚙️ Funcionalidades
 
-    public class ProdutoClientService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
-    :
-        BaseService<ProdutoEntity>(
-            sankhyaApiConfig,
-            EEntityNames.Produto)
+1. Exemplo de entidade:
+   ```csharp
+   public class ProdutoEntity : SankhyaModelBase
+   {
+       [Key("CODPROD", true)] public NullableState<long> CodProd { get; set; }
+       [XmlElement("CODVOL")] public NullableState<string> CodVol { get; set; }
+       [XmlElement("DESCRPROD")] public NullableState<string> DescrProd { get; set; }
+       [XmlElement("REFFORN")] public NullableState<string> RefForn { get; set; }
+   }
+   ```
 
-## Uso
+2. Serviço da entidade usando nome da entidade como string:
+   ```csharp
+   public class ProdutoClientService : BaseService<ProdutoEntity>
+   {
+       public ProdutoClientService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
+           : base(sankhyaApiConfig, "Produto") { }
+   }
+   ```
 
-#### Operações de CRUD
-Esta biblioteca permite realizar operações de CRUD (Criar, Ler, Atualizar e Excluir) usando classes de serviço que herdam de uma classe base genérica (BaseService<T>). A seguir estão exemplos de como utilizar esses métodos.
+## 🧪 Uso
 
-1. **Inserir**
+### Inserir
 
-- O método Inserir permite adicionar uma ou mais instâncias de uma entidade no banco de dados.
-    ```c#
-    // Para inserir uma lista de objetos
-    var produtos = new List<ProdutoEntity>
-    {
-        new ProdutoEntity { CodProd = 1, CodVol = "UN", DescrProd = "Produto A", RefForn = "F123" },
-        new ProdutoEntity { CodProd = 2, CodVol = "UN", DescrProd = "Produto B", RefForn = "F456" }
-    };
-    var response = await produtoClientService.Inserir(produtos);
+```csharp
+var produtos = new List<ProdutoEntity>
+{
+    new() { CodProd = 1, CodVol = "UN", DescrProd = "Produto A", RefForn = "F123" },
+    new() { CodProd = 2, CodVol = "UN", DescrProd = "Produto B", RefForn = "F456" }
+};
+var response = await produtoClientService.CreateManyAsync(produtos);
+```
 
-    // Para inserir um único objeto
-    var produto = new ProdutoEntity { CodProd = 3, CodVol = "UN", DescrProd = "Produto C", RefForn = "F789" };
-    var response = await produtoClientService.Inserir(produto);
+### Atualizar
 
-2. **Atualizar**
-- O método Atualizar permite modificar uma ou mais instâncias de uma entidade já existente no banco de dados.
-    ```c#
-    // Para atualizar uma lista de objetos
-    produtos[0].DescrProd = "Produto A Atualizado";
-    var response = await produtoClientService.Atualizar(produtos);
+```csharp
+produtos[0].DescrProd = "Produto A Atualizado";
+var response = await produtoClientService.UpdateManyAsync(produtos);
+```
 
-    // Para atualizar um único objeto
-    produto.DescrProd = "Produto C Atualizado";
-    var response = await produtoClientService.Atualizar(produto);
-3. **Recuperar**
-- O método Recuperar permite buscar dados de uma entidade com base em uma query SQL.
-    ```c#
-    string query = "SELECT * FROM Produto WHERE CodProd = 1";
-    var produtos = await produtoClientService.Recuperar(query);
-4. **Query**
-- O método Query permite executar uma consulta SQL nativa e retornar os dados em uma lista de objetos mapeados ou em um dicionário de valores.
-    ```c#
-    public class ProdutoEntity
-    {
-        [XmlElement("CODPROD")] public long CodProd { get; set; }
-        [XmlElement("CODVOL")] public string? CodVol { get; set; }
-        [XmlElement("DESCRPROD")] public string? DescrProd { get; set; }
-        [XmlElement("REFFORN")] public string? RefForn { get; set; }
-        [XmlElement("DESCRGRUPOPROD")] public string? Grupo { get; set; }
-    }
+### Buscar registros com FindAsync
 
-    # Program.cs
+```csharp
+string query = "this.CODPROD = 1 AND this.AD_ATIVO = 'S'";
+var produtos = await produtoClientService.FindAsync(query);
+```
 
-    // Exemplo de uso do método Query para retornar uma lista de objetos
-    string script = "SELECT * FROM Produto WHERE CodProd > 1";
-    List<ProdutoEntity> resultado = await produtoClientService.Query<ProdutoEntity>(script);
+### Query tipada com QueryRawAsync
 
-    // Exemplo de uso do método Query para retornar uma lista de dicionários
-    List<Dictionary<string, dynamic?> resultadoDicionario = await produtoClientService.Query(script);
+```csharp
+string script = "SELECT CODPROD, DESCRPROD FROM TGFPRO WHERE ATIVO = 'S'";
+List<ProdutoEntity> resultado = await produtoClientService.QueryRawAsync<ProdutoEntity>(script);
+```
 
-#### Descrição dos Métodos na BaseService&lt;T&gt;
-    
-- **Inserir(List&lt;T&gt; requests)**: Recebe uma lista de objetos do tipo `T` para inserir no banco. Retorna uma lista dos objetos inseridos.
-- **Inserir(T request)**: Recebe uma instância de `T` e insere uma linha no banco. Retorna o objeto inserido.
-- **Atualizar(List&lt;T&gt; requests)**: Recebe uma lista de objetos do tipo `T` para atualizar. Retorna uma lista dos objetos atualizados.
-- **Atualizar(T request)**: Recebe uma instância de `T` e atualiza a linha correspondente no banco. Retorna o objeto atualizado.
-- **Recuperar(string query)**: Executa uma consulta com base na `query` passada e retorna uma lista de objetos do tipo `T`.
+### Query como dicionário com QueryAsDictionaryAsync
 
-
+```csharp
+string script = "SELECT CODPROD, DESCRPROD FROM TGFPRO WHERE ATIVO = 'S'";
+List<Dictionary<string, object?>> resultadoDict = await produtoClientService.QueryAsDictionaryAsync(script);
+```
 
 ## 📄 Licença
+
 Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE.txt) para mais detalhes.

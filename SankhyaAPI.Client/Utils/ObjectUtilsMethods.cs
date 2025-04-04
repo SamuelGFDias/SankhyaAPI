@@ -171,7 +171,7 @@ public static class ObjectUtilsMethods
 
         for (int i = 0; i < maxCount; i++)
         {
-            T objectDest = new T();
+            var objectDest = new T();
             PropertyInfo[] props = PropertiesFromObject(objectDest);
 
             foreach (PropertyInfo prop in props)
@@ -219,8 +219,8 @@ public static class ObjectUtilsMethods
 
     public static string? GetXmlElementName(this PropertyInfo prop)
     {
-        XmlElementAttribute? xmlElementAttr = prop.GetCustomAttribute<XmlElementAttribute>();
-        PrimaryKeyElementAttribute? primaryKeyAttr = prop.GetPrimaryKeyAttribute();
+        var xmlElementAttr = prop.GetCustomAttribute<XmlElementAttribute>();
+        KeyAttribute? primaryKeyAttr = prop.GetPrimaryKeyAttribute();
         return xmlElementAttr?.ElementName ?? primaryKeyAttr?.ElementName;
     }
 
@@ -317,7 +317,7 @@ public static class ObjectUtilsMethods
     private static List<PropertyInfo> GetKeysPropertiesFromObject<T>(bool isAutoEnumerable = false)
         where T : class, new()
     {
-        T obj = new T();
+        var obj = new T();
         PropertyInfo[] properties = obj.GetType().GetProperties();
 
         if (isAutoEnumerable)
@@ -329,8 +329,8 @@ public static class ObjectUtilsMethods
         return properties.Where(p => p.GetPrimaryKeyAttribute() != null).ToList();
     }
 
-    private static PrimaryKeyElementAttribute? GetPrimaryKeyAttribute(this PropertyInfo prop) =>
-        prop.GetCustomAttribute<PrimaryKeyElementAttribute>();
+    private static KeyAttribute? GetPrimaryKeyAttribute(this PropertyInfo prop) =>
+        prop.GetCustomAttribute<KeyAttribute>();
 
     #endregion
 }

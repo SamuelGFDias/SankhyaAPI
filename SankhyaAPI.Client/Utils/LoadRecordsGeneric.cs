@@ -1,5 +1,4 @@
 using SankhyaAPI.Client.Envelopes;
-using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.MetaData;
 using SankhyaAPI.Client.Requests;
 
@@ -20,7 +19,7 @@ internal class LoadRecordsGeneric
     /// <param name="parameters">Lista de parâmetros para a expressão de filtro.</param>
     /// <returns>Um <see cref="Task{ServiceRequest{T}}"/> representando a operação assíncrona.</returns>
     public static ServiceRequest<T> CreateLoadEnvelope<T>(
-        Enum entityName,
+        string entityName,
         string expression = "",
         string? orderBy = null,
         List<Parameter>? parameters = null)

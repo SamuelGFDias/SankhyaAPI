@@ -4,7 +4,7 @@ namespace SankhyaAPI.Client.ClientFactory;
 
 public static class SankhyaApiClientFactory
 {
-    public static Interfaces.ISankhyaServiceClient ConfigureClient(string baseUrl)
+    internal static Interfaces.ISankhyaServiceClient ConfigureClient(string baseUrl)
     {
         var client = RestService.For<Interfaces.ISankhyaServiceClient>(
             new HttpClient
@@ -22,7 +22,7 @@ public static class SankhyaApiClientFactory
         return client;
     }
 
-    public static Interfaces.ISankhyaServiceClient ConfigureClientJson(string baseUrl)
+    internal static Interfaces.ISankhyaServiceClient ConfigureClientJson(string baseUrl)
     {
         var client = RestService.For<Interfaces.ISankhyaServiceClient>(
             new HttpClient
@@ -40,7 +40,7 @@ public static class SankhyaApiClientFactory
         return client;
     }
 
-    public static Interfaces.ISankhyaServiceClient ConfigureClientFile(string baseUrl)
+    internal static Interfaces.ISankhyaServiceClient ConfigureClientFile(string baseUrl)
     {
         var client = RestService.For<Interfaces.ISankhyaServiceClient>(
             new HttpClient

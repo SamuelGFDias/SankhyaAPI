@@ -5,25 +5,26 @@ namespace SankhyaAPI.Client.Envelopes;
 
 public class DataSet
 {
-    private Enum? _rootEntity;
+    private string? _rootEntity;
 
     [XmlAttribute(AttributeName = "rootEntity")]
-    public string? RootEntity
-    {
-        get => _rootEntity != null ? _rootEntity.GetXmlEnumValue() : string.Empty;
-        set { }
-    }
+    public string RootEntity => _rootEntity ?? string.Empty;
 
-    public void SetRootEntity(Enum entity)
+    public void SetRootEntity(Enum entityName)
     {
-        _rootEntity = entity;
+        _rootEntity = entityName.GetXmlEnumValue();
+    }
+    
+    public void SetRootEntity(string entityName)
+    {
+        _rootEntity = entityName;
     }
 
     [XmlAttribute(AttributeName = "includePresentationFields")]
     public string IncludePresentationFields { get; set; } = "S";
 
     [XmlAttribute(AttributeName = "parallelLoader")]
-    public string ParallelLoader { get; set; } = "false";
+    public string ParallelLoader { get; private set; } = "false";
 
     [XmlAttribute(AttributeName = "disableRowsLimit")]
     public string DisableRowsLimit { get; set; } = "false";

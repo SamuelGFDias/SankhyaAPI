@@ -7,8 +7,8 @@
 public interface IBaseService<T>
 {
     Task<List<T>> CreateManyAsync(List<T> requests);
-    Task<T> CreateAsync(T request);
+    Task<T?> CreateAsync(T request);
     Task<List<T>> UpdateManyAsync(List<T> requests);
-    Task<T> UpdateAsync(T request);
+    Task<T?> UpdateAsync(T request);
     Task<List<T>> FindAsync(string query);
 }

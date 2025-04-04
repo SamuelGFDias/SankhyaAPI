@@ -49,10 +49,10 @@ public abstract class XmlSerialable : IXmlSerializable
 
             string formattedValue = ObjectUtilsMethods.GetFormattedString(value);
 
-            PrimaryKeyElementAttribute? keyAttribute = property.GetCustomAttribute<PrimaryKeyElementAttribute>();
+            var keyAttribute = property.GetCustomAttribute<KeyAttribute>();
             if (keyAttribute is { AutoEnumerable: true }) continue;
 
-            XmlAttributeAttribute? xmlAttribute = property.GetCustomAttribute<XmlAttributeAttribute>();
+            var xmlAttribute = property.GetCustomAttribute<XmlAttributeAttribute>();
             if (xmlAttribute != null)
             {
                 writer.WriteAttributeString(xmlAttribute.AttributeName, formattedValue);

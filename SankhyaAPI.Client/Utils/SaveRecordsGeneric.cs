@@ -13,7 +13,7 @@ internal static class SaveRecordsGeneric
 
     public static ServiceRequest<T> CreateInsertEnvelope<T>(
         List<T> objs,
-        Enum entityName)
+        string entityName)
         where T : class, new()
     {
         ObjectUtilsMethods.ValidarCamposChave(objs);
@@ -44,7 +44,7 @@ internal static class SaveRecordsGeneric
 
     public static ServiceRequest<T> CreateUpdateEnvelope<T>(
         List<T> objs,
-        Enum entityName)
+        string entityName)
         where T : class, new()
     {
         ObjectUtilsMethods.ValidarCamposChave(objs, true);
@@ -88,7 +88,7 @@ internal static class SaveRecordsGeneric
         // Itera sobre as propriedades da entidade
         foreach (PropertyInfo? prop in obj.GetType().GetProperties())
         {
-            var keyAttribute = prop.GetCustomAttribute<PrimaryKeyElementAttribute>();
+            var keyAttribute = prop.GetCustomAttribute<KeyAttribute>();
             if (keyAttribute == null) continue;
 
             object? value = prop.GetValue(obj);
@@ -109,7 +109,7 @@ internal static class SaveRecordsGeneric
 
         foreach (PropertyInfo? prop in obj.GetType().GetProperties())
         {
-            var keyAttribute = prop.GetCustomAttribute<PrimaryKeyElementAttribute>();
+            var keyAttribute = prop.GetCustomAttribute<KeyAttribute>();
             if (keyAttribute != null)
             {
                 if (isUpdate || keyAttribute.AutoEnumerable) continue;

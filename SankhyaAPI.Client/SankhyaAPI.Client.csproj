@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<Title>SankhyaAPI</Title>
 		<Authors>samueldias21;wallacevff</Authors>
-		<Version>3.0.0</Version>
+		<Version>4.0.0</Version>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
@@ -29,6 +29,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<Folder Include="Models\" />
 		<Folder Include="Providers\" />
 	</ItemGroup>
 

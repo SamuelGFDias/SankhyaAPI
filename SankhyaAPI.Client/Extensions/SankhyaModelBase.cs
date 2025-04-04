@@ -8,21 +8,56 @@ public class SankhyaModelBase : IModelBase
 {
     protected SankhyaModelBase()
     {
-        if (!IsNullableProperties(this))
+        ValidateNullableStateProperties(this);
+    }
+
+    private static void ValidateNullableStateProperties<T>(T obj)
+        where T : class
+    {
+        Type type = obj.GetType();
+        PropertyInfo[] properties = type.GetProperties();
+
+        foreach (PropertyInfo property in properties)
         {
-            throw new ArgumentException("Propriedades não nulas estão presentes no objeto");
+            // Verifica se a propriedade é NullableState<T>
+            if (!IsNullableState(property.PropertyType))
+            {
+                throw new ArgumentException($"A propriedade '{property.Name}' não é do tipo NullableState<>.");
+            }
+
+            object? value = property.GetValue(obj);
+            if (value == null) continue;
+
+            PropertyInfo? stateProperty = property.PropertyType.GetProperty(nameof(NullableState<int>.State));
+            if (stateProperty == null) continue;
+
+            var state = (EPropertyState)stateProperty.GetValue(value)!;
+
+            var primaryKeyAttr = property.GetCustomAttribute<KeyAttribute>();
+
+            if (primaryKeyAttr == null) continue;
+
+            if (state == EPropertyState.Clear)
+            {
+                throw new ArgumentException($"A chave primária '{property.Name}' não pode estar com estado CLEAR.");
+            }
+
+            switch (primaryKeyAttr.AutoEnumerable)
+            {
+                case true when state != EPropertyState.UnSet:
+                    throw new ArgumentException
+                        ($"A chave primária '{property.Name}' deve estar UNSET porque é AutoEnumerable.");
+                case false when state != EPropertyState.Set:
+                    throw new ArgumentException
+                        ($"A chave primária '{property.Name}' deve estar SET porque não é AutoEnumerable.");
+            }
         }
     }
 
-    private bool IsNullableProperties<T>(T obj) where T : class
+    private static bool IsNullableState(Type type)
     {
-        PropertyInfo[] properties = obj.GetType().GetProperties();
-        return properties.All(p =>
-        {
-            Type? isNullable = Nullable.GetUnderlyingType(p.PropertyType);
-            bool isValueType = p.PropertyType.IsValueType;
-            bool isNullableState = p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(NullableState<>);
-            return isNullable != null || !isValueType || isNullableState;
-        });
+        if (!type.IsGenericType) return false;
+        Type genericType = type.GetGenericTypeDefinition();
+        return genericType == typeof(NullableState<>);
     }
 }

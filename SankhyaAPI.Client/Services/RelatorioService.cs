@@ -1,5 +1,4 @@
-﻿using Azure.Core;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Refit;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
