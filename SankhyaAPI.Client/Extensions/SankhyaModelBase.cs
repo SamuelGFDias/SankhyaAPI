@@ -6,9 +6,11 @@ namespace SankhyaAPI.Client.Extensions;
 
 public class SankhyaModelBase : IModelBase
 {
-    protected SankhyaModelBase()
+    public static void ValidateNullableStateProperties<T>(List<T> objetos)
+        where T : class
     {
-        ValidateNullableStateProperties(this);
+        foreach (T obj in objetos)
+            ValidateNullableStateProperties(obj);
     }
 
     private static void ValidateNullableStateProperties<T>(T obj)
@@ -19,7 +21,6 @@ public class SankhyaModelBase : IModelBase
 
         foreach (PropertyInfo property in properties)
         {
-            // Verifica se a propriedade é NullableState<T>
             if (!IsNullableState(property.PropertyType))
             {
                 throw new ArgumentException($"A propriedade '{property.Name}' não é do tipo NullableState<>.");
@@ -28,10 +29,13 @@ public class SankhyaModelBase : IModelBase
             object? value = property.GetValue(obj);
             if (value == null) continue;
 
-            PropertyInfo? stateProperty = property.PropertyType.GetProperty(nameof(NullableState<int>.State));
-            if (stateProperty == null) continue;
+            EPropertyState state;
 
-            var state = (EPropertyState)stateProperty.GetValue(value)!;
+            if (value is INullableState nullableStateValue)
+                state = nullableStateValue.State;
+            else
+                continue;
+
 
             var primaryKeyAttr = property.GetCustomAttribute<KeyAttribute>();
 
@@ -41,6 +45,8 @@ public class SankhyaModelBase : IModelBase
             {
                 throw new ArgumentException($"A chave primária '{property.Name}' não pode estar com estado CLEAR.");
             }
+
+            Console.WriteLine($"Validando propriedade: {property.Name}, Valor: {value}, Estado: {state}\n");
 
             switch (primaryKeyAttr.AutoEnumerable)
             {

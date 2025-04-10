@@ -7,15 +7,19 @@ using SankhyaAPI.Client.Requests;
 
 namespace SankhyaAPI.Client.Utils;
 
-internal static class SaveRecordsGeneric
+public static class SaveRecordsGeneric
 {
     #region public Methods
 
-    public static ServiceRequest<T> CreateInsertEnvelope<T>(
+    public static ServiceRequest<T> CreateInsertEnvelope<T>
+    (
         List<T> objs,
-        string entityName)
+        string entityName
+    )
         where T : class, new()
     {
+        SankhyaModelBase.ValidateNullableStateProperties(objs);
+        
         ObjectUtilsMethods.ValidarCamposChave(objs);
         var envelope = new ServiceRequest<T>
         {
@@ -23,18 +27,11 @@ internal static class SaveRecordsGeneric
             {
                 DataSet = new DataSet
                 {
-                    DataRow = objs.Select(obj => new DataRow
-                    {
-                        Entity = obj.GetEntityForFields()
-                    }).ToList()
+                    DataRow = objs.Select(obj => new DataRow { Entity = obj.GetEntityForFields() }).ToList()
                 }
             }
         };
-        var sankhyaEntity = new SankhyaEntity
-        {
-            Path = "",
-            Field = ObjectUtilsMethods.GetFieldsFromObject(new T())
-        };
+        var sankhyaEntity = new SankhyaEntity { Path = "", Field = ObjectUtilsMethods.GetFieldsFromObject(new T()) };
         envelope.SetServiceName(EServiceNames.SaveRecords);
         envelope.RequestBody.DataSet.SetRootEntity(entityName);
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
@@ -42,11 +39,15 @@ internal static class SaveRecordsGeneric
     }
 
 
-    public static ServiceRequest<T> CreateUpdateEnvelope<T>(
+    public static ServiceRequest<T> CreateUpdateEnvelope<T>
+    (
         List<T> objs,
-        string entityName)
+        string entityName
+    )
         where T : class, new()
     {
+        SankhyaModelBase.ValidateNullableStateProperties(objs);
+
         ObjectUtilsMethods.ValidarCamposChave(objs, true);
         var envelope = new ServiceRequest<T>
         {
@@ -54,23 +55,21 @@ internal static class SaveRecordsGeneric
             {
                 DataSet = new DataSet
                 {
-                    DataRow = objs.Select(obj =>
-                    {
-                        var data = new DataRow
-                        {
-                            Entity = obj.GetEntityForFields(true),
-                        };
-                        data.Key.GetKeysAsXml(obj);
-                        return data;
-                    }).ToList()
+                    DataRow = objs
+                             .Select
+                              (
+                                  obj =>
+                                  {
+                                      var data = new DataRow { Entity = obj.GetEntityForFields(true), };
+                                      data.Key.GetKeysAsXml(obj);
+                                      return data;
+                                  }
+                              )
+                             .ToList()
                 }
             }
         };
-        var sankhyaEntity = new SankhyaEntity
-        {
-            Path = "",
-            Field = ObjectUtilsMethods.GetFieldsFromObject(new T())
-        };
+        var sankhyaEntity = new SankhyaEntity { Path = "", Field = ObjectUtilsMethods.GetFieldsFromObject(new T()) };
         envelope.SetServiceName(EServiceNames.RemoveRecords);
         envelope.RequestBody.DataSet.SetRootEntity(entityName);
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
@@ -81,11 +80,10 @@ internal static class SaveRecordsGeneric
 
     #region privateMethods
 
-    private static XElement GetKeysAsXml<T>(this XElement element, T obj)
+    private static void GetKeysAsXml<T>(this XElement element, T obj)
     {
         if (obj == null) throw new Exception("A entidade deve ser definida");
-        
-        // Itera sobre as propriedades da entidade
+
         foreach (PropertyInfo? prop in obj.GetType().GetProperties())
         {
             var keyAttribute = prop.GetCustomAttribute<KeyAttribute>();
@@ -99,11 +97,10 @@ internal static class SaveRecordsGeneric
 
             element.Add(new XElement(keyAttribute.ElementName, convertedValue));
         }
-
-        return element;
     }
 
-    private static XElement GetEntityForFields<T>(this T obj, bool isUpdate = false) where T : class
+    private static XElement GetEntityForFields<T>(this T obj, bool isUpdate = false)
+        where T : class
     {
         var localFields = new XElement("localFields");
 
@@ -116,39 +113,51 @@ internal static class SaveRecordsGeneric
             }
 
             string? xmlElementName = prop.GetXmlElementName();
-
             if (xmlElementName == null) continue;
 
-            // Obt?m o valor formatado como string
-            string? convertedValue = obj.GetFormattedString(prop);
+            object? propertyValue = prop.GetValue(obj);
 
-            bool isNullableState = prop.PropertyType.IsGenericType &&
-                                   prop.PropertyType.GetGenericTypeDefinition() == typeof(NullableState<>);
+            bool isNullableState = prop.PropertyType.IsGenericType
+                                && prop.PropertyType.GetGenericTypeDefinition() == typeof(NullableState<>);
 
+            EPropertyState? state = null;
             bool isClear = false;
+            bool isUnSet = false;
 
-            if (isNullableState)
+            if (isNullableState && propertyValue != null)
             {
-                object? value = prop.GetValue(obj);
-                if (value != null)
+                var stateProperty = propertyValue.GetType().GetProperty(nameof(NullableState<int>.State));
+                if (stateProperty != null)
                 {
-                    PropertyInfo? stateProperty = value.GetType().GetProperty("State");
-                    if (stateProperty != null)
+                    object? stateValue = stateProperty.GetValue(propertyValue);
+                    if (stateValue is EPropertyState stateEnum)
                     {
-                        // Obt?m o valor da propriedade "State"
-                        object? stateValue = stateProperty.GetValue(value);
-
-                        isClear = stateValue != null && (EPropertyState)stateValue == EPropertyState.Clear;
+                        state = stateEnum;
+                        isClear = stateEnum == EPropertyState.Clear;
+                        isUnSet = stateEnum == EPropertyState.UnSet;
                     }
                 }
             }
-            
-            // if (convertedValue != null && !isClear) continue;
-            
-            if (convertedValue != null || isNullableState) 
-                localFields.Add(isClear && isUpdate
-                    ? new XElement(xmlElementName)
-                    : new XElement(xmlElementName, convertedValue));
+
+            switch (isUpdate)
+            {
+                case false when state is not EPropertyState.Set:
+                case true when isUnSet:
+                    continue;
+            }
+
+            string? convertedValue = obj.GetFormattedString(prop);
+
+            if (convertedValue != null
+             || (isUpdate && isClear))
+            {
+                localFields.Add
+                (
+                    isClear
+                        ? new XElement(xmlElementName) // UPDATE com Clear
+                        : new XElement(xmlElementName, convertedValue)
+                );
+            }
         }
 
         return localFields;

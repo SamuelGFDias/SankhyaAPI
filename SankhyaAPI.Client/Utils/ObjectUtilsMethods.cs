@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Xml.Serialization;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
+using SankhyaAPI.Client.Interfaces;
 using SankhyaAPI.Client.MetaData;
 
 namespace SankhyaAPI.Client.Utils;
@@ -14,28 +15,42 @@ public static class ObjectUtilsMethods
     public static List<Field> GetFieldsFromObject(object obj)
     {
         PropertyInfo[] props = PropertiesFromObject(obj);
-        
+
         return props.Select(t => new Field { Nome = t.GetXmlElementName() }).ToList();
     }
 
-    public static string GetFormattedString(object value) =>
-        value switch
-        {
-            string s => s.Trim(),
-            float f => f.ToString("G", CultureInfo.InvariantCulture),
-            decimal d => d.ToString("G", CultureInfo.InvariantCulture),
-            double db => db.ToString("G", CultureInfo.InvariantCulture),
-            Enum e => e.GetXmlEnumValue(),
-            DateTime dt => dt.ToString("dd/MM/yyyy HH:mm:ss"),
-            DateOnly dt => dt.ToString("dd/MM/yyyy"),
-            TimeOnly time => time.ToString("HHmm"),
-            bool b => b ? "S" : "N",
-            _ => value.ToString()!
-        };
+    public static string GetFormattedString(object value) => value switch
+    {
+        string s      => s.Trim(),
+        float f       => f.ToString("G", CultureInfo.InvariantCulture),
+        decimal d     => d.ToString("G", CultureInfo.InvariantCulture),
+        double db     => db.ToString("G", CultureInfo.InvariantCulture),
+        Enum e        => e.GetXmlEnumValue(),
+        DateTime dt   => dt.ToString("dd/MM/yyyy HH:mm:ss"),
+        DateOnly dt   => dt.ToString("dd/MM/yyyy"),
+        TimeOnly time => time.ToString("HHmm"),
+        bool b        => b ? "S" : "N",
+        _             => value.ToString()!
+    };
 
     public static string? GetFormattedString<T>(this T obj, PropertyInfo property)
     {
         object? value = property.GetValue(obj);
+
+        if (value == null)
+            return null;
+
+        bool isNullableState = property.PropertyType.IsGenericType
+                            && property.PropertyType.GetGenericTypeDefinition() == typeof(NullableState<>);
+
+        if (isNullableState)
+        {
+            PropertyInfo? innerValueProp = value.GetType().GetProperty("Value");
+            if (innerValueProp != null)
+            {
+                value = innerValueProp.GetValue(value);
+            }
+        }
 
         if (value == null)
             return null;
@@ -83,7 +98,8 @@ public static class ObjectUtilsMethods
         {
             Type? propertyType = GetPropertyValueType(property.PropertyType);
 
-            if (string.IsNullOrWhiteSpace(xmlElementValue) && propertyType != typeof(bool)) return null;
+            if (string.IsNullOrWhiteSpace(xmlElementValue)
+             && propertyType != typeof(bool)) return null;
 
             object convertedValue = propertyType switch
             {
@@ -109,15 +125,23 @@ public static class ObjectUtilsMethods
                 not null when propertyType == typeof(DateTime) =>
                     DateTime.TryParse(xmlElementValue, out DateTime dateTime)
                         ? dateTime
-                        : DateTime.TryParseExact(xmlElementValue, "ddMMyyyy HH:mm:ss",
+                        : DateTime.TryParseExact
+                        (
+                            xmlElementValue,
+                            "ddMMyyyy HH:mm:ss",
                             CultureInfo.InvariantCulture,
                             DateTimeStyles.None,
-                            out dateTime)
+                            out dateTime
+                        )
                             ? dateTime
-                            : DateTime.TryParseExact(xmlElementValue, "ddMMyyyy",
+                            : DateTime.TryParseExact
+                            (
+                                xmlElementValue,
+                                "ddMMyyyy",
                                 CultureInfo.InvariantCulture,
                                 DateTimeStyles.None,
-                                out dateTime)
+                                out dateTime
+                            )
                                 ? dateTime
                                 : throw new Exception($"Valor '{xmlElementValue}' não é uma data válida"),
 
@@ -129,8 +153,8 @@ public static class ObjectUtilsMethods
                 {
                     "S" => true,
                     "N" => false,
-                    "" => false,
-                    _ => throw new Exception($"Valor '{xmlElementValue}' não é um boolean válido")
+                    ""  => false,
+                    _   => throw new Exception($"Valor '{xmlElementValue}' não é um boolean válido")
                 },
 
                 // Conversão para String
@@ -143,8 +167,8 @@ public static class ObjectUtilsMethods
                 _ => Convert.ChangeType(xmlElementValue, propertyType!)
             };
 
-            if (property.PropertyType is not { IsGenericType: true } genericType ||
-                genericType.GetGenericTypeDefinition() != typeof(NullableState<>)) return convertedValue;
+            if (property.PropertyType is not { IsGenericType: true } genericType
+             || genericType.GetGenericTypeDefinition() != typeof(NullableState<>)) return convertedValue;
 
             // Obtém o tipo genérico subjacente (T)
             Type innerType = property.PropertyType.GetGenericArguments()[0];
@@ -152,11 +176,12 @@ public static class ObjectUtilsMethods
             // Cria a instância de NullableState<T> dinamicamente
             Type nullableStateType = typeof(NullableState<>).MakeGenericType(innerType);
             return Activator.CreateInstance(nullableStateType, convertedValue);
-        }
-        catch (Exception ex)
+        } catch (Exception ex)
         {
-            throw new Exception(
-                $"Erro ao converter o valor '{xmlElementValue}' para a propriedade '{property.Name}': {ex.Message}");
+            throw new Exception
+            (
+                $"Erro ao converter o valor '{xmlElementValue}' para a propriedade '{property.Name}': {ex.Message}"
+            );
         }
     }
 
@@ -176,10 +201,11 @@ public static class ObjectUtilsMethods
 
             foreach (PropertyInfo prop in props)
             {
-                KeyValuePair<string, List<dynamic>?> field =
-                    fields.FirstOrDefault(a => a.Key == prop.GetXmlElementName());
+                KeyValuePair<string, List<dynamic>?> field = fields.FirstOrDefault
+                    (a => a.Key == prop.GetXmlElementName());
 
-                if (field.Value == null || field.Value.Count <= i) continue;
+                if (field.Value == null
+                 || field.Value.Count <= i) continue;
 
                 dynamic? value = field.Value[i];
 
@@ -205,13 +231,14 @@ public static class ObjectUtilsMethods
 
         if (field == null) throw new Exception($"Nenhum enumerador encontrado para a valor passado: {value}");
 
-        if (Attribute.GetCustomAttribute(field, typeof(XmlEnumAttribute)) is not XmlEnumAttribute
-            {
-                Name: not null
-            } attribute)
+        if (Attribute.GetCustomAttribute
+                (field, typeof(XmlEnumAttribute)) is not XmlEnumAttribute { Name: not null } attribute)
         {
-            throw new ArgumentException("Enumerador não pode conter propriedades sem o atributo XmlEnum implementado",
-                field.Name);
+            throw new ArgumentException
+            (
+                "Enumerador não pode conter propriedades sem o atributo XmlEnum implementado",
+                field.Name
+            );
         }
 
         return attribute.Name;
@@ -233,31 +260,45 @@ public static class ObjectUtilsMethods
 
         if (!isUpdate
                 ? autoEnumerableKeys is not { Count: > 0 }
-                : keys is not { Count: > 0 }
+                : keys is not { Count              : > 0 }
            ) return;
 
         foreach (T item in objs)
         {
-            List<PropertyInfo> propertyKeys = item.GetType().GetProperties()
-                .Where(!isUpdate
-                    ? autoEnumerableKeys.Contains
-                    : keys.Contains)
-                .ToList();
+            List<PropertyInfo> propertyKeys = item
+                                             .GetType()
+                                             .GetProperties()
+                                             .Where
+                                              (
+                                                  !isUpdate
+                                                      ? autoEnumerableKeys.Contains
+                                                      : keys.Contains
+                                              )
+                                             .ToList();
 
             foreach (PropertyInfo property in propertyKeys)
             {
-                object? value = property.GetValue(item);
+                object? rawValue = property.GetValue(item);
+
+                bool isSet = rawValue is INullableState state
+                                 ? state.State == EPropertyState.Set
+                                 : rawValue != null;
 
                 switch (isUpdate)
                 {
-                    case true when value == null:
-                        throw new ArgumentNullException(
+                    case true when !isSet:
+                        throw new ArgumentNullException
+                        (
                             property.Name,
-                            "Os campos que fazem parte da chave primária não podem estar vazios em operações de atualização.");
-                    case false when value != null:
-                        throw new ArgumentException(
+                            "Os campos que fazem parte da chave primária não podem estar vazios em operações de atualização."
+                        );
+
+                    case false when isSet:
+                        throw new ArgumentException
+                        (
                             "Os campos que fazem parte da chave primária com atributos auto enumerados não podem estar preenchidos em operações de inserção.",
-                            property.Name);
+                            property.Name
+                        );
                 }
             }
         }
@@ -268,23 +309,21 @@ public static class ObjectUtilsMethods
     {
         Type enumType = typeof(T);
         FieldInfo[] fields = enumType.GetFields();
-        FieldInfo? matchField = fields.FirstOrDefault(f =>
-            f.GetCustomAttribute<XmlEnumAttribute>()?.Name == xmlValue);
+        FieldInfo? matchField = fields.FirstOrDefault(f => f.GetCustomAttribute<XmlEnumAttribute>()?.Name == xmlValue);
 
         return matchField != null
-            ? (T)Enum.Parse(enumType, matchField.Name)
-            : throw new ArgumentException($"Valor '{xmlValue}' não é válido para o enum '{enumType.Name}'");
+                   ? (T)Enum.Parse(enumType, matchField.Name)
+                   : throw new ArgumentException($"Valor '{xmlValue}' não é válido para o enum '{enumType.Name}'");
     }
 
     public static object GetEnumValueFromXml(Type enumType, string xmlValue)
     {
         FieldInfo[] fields = enumType.GetFields();
-        FieldInfo? matchField = fields.FirstOrDefault(f =>
-            f.GetCustomAttribute<XmlEnumAttribute>()?.Name == xmlValue);
+        FieldInfo? matchField = fields.FirstOrDefault(f => f.GetCustomAttribute<XmlEnumAttribute>()?.Name == xmlValue);
 
         return matchField != null
-            ? Enum.Parse(enumType, matchField.Name)
-            : throw new ArgumentException($"Valor '{xmlValue}' não é válido para o enum '{enumType.Name}'");
+                   ? Enum.Parse(enumType, matchField.Name)
+                   : throw new ArgumentException($"Valor '{xmlValue}' não é válido para o enum '{enumType.Name}'");
     }
 
     //public static PropertyState GetPropertyState<T>(PropertyInfo propertyInfo)
@@ -302,11 +341,11 @@ public static class ObjectUtilsMethods
 
         return type;
     }
+
     #endregion
 
 
     #region PrivateMethods
-
 
     private static PropertyInfo[] PropertiesFromObject(object obj)
     {
@@ -321,10 +360,14 @@ public static class ObjectUtilsMethods
         PropertyInfo[] properties = obj.GetType().GetProperties();
 
         if (isAutoEnumerable)
-            return properties.Where(p =>
-                isAutoEnumerable
-                    ? p.GetPrimaryKeyAttribute() is { AutoEnumerable: true }
-                    : p.GetPrimaryKeyAttribute() != null).ToList();
+            return properties
+                  .Where
+                   (
+                       p => isAutoEnumerable
+                                ? p.GetPrimaryKeyAttribute() is { AutoEnumerable: true }
+                                : p.GetPrimaryKeyAttribute() != null
+                   )
+                  .ToList();
 
         return properties.Where(p => p.GetPrimaryKeyAttribute() != null).ToList();
     }

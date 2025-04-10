@@ -24,7 +24,7 @@ public class DataSet
     public string IncludePresentationFields { get; set; } = "S";
 
     [XmlAttribute(AttributeName = "parallelLoader")]
-    public string ParallelLoader { get; private set; } = "false";
+    public string ParallelLoader { get; set; } = "false";
 
     [XmlAttribute(AttributeName = "disableRowsLimit")]
     public string DisableRowsLimit { get; set; } = "false";

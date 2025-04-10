@@ -18,8 +18,8 @@ public abstract class
     )
     : SessionService(sankhyaApiConfig), IBaseService<T>
     where T : SankhyaModelBase, new()
-
 {
+    
     /// <summary>
     /// Insere vários registros no banco de dados.
     /// </summary>
