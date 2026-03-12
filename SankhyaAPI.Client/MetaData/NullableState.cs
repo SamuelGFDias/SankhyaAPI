@@ -1,4 +1,5 @@
-﻿using SankhyaAPI.Client.Extensions;
+﻿using System.Text.Json.Serialization;
+using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.Interfaces;
 
 namespace SankhyaAPI.Client.MetaData;

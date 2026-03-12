@@ -4,13 +4,13 @@ using SankhyaAPI.Client.Requests;
 
 namespace SankhyaAPI.Client.Utils;
 
-internal static class ExecuteQueryGeneric
+public static class ExecuteQueryGeneric
 {
     public static ServiceRequest<T> CreateQueryEnvelope<T>(string script) where T : class, new()
     {
         var envelope = new ServiceRequest<T>
         {
-            RequestBody = new RequestBody<T>
+            RequestBody = new RequestBody
             {
                 Sql = script
             }

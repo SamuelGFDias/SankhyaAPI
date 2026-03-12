@@ -9,5 +9,5 @@ public enum EServiceNames
     [XmlEnum("CRUDServiceProvider.loadRecords")] LoadRecords,
     [XmlEnum("CRUDServiceProvider.saveRecord")] SaveRecords,
     [XmlEnum("VisualizadorRelatorios.visualizarRelatorio")] VisualizadorRelatorios,
-    [XmlEnum("CRUDServiceProvider.removeRecords")] RemoveRecords
+    [XmlEnum("CRUDServiceProvider.removeRecord")] RemoveRecords
 }

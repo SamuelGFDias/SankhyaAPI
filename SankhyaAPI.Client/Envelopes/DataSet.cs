@@ -8,13 +8,17 @@ public class DataSet
     private string? _rootEntity;
 
     [XmlAttribute(AttributeName = "rootEntity")]
-    public string RootEntity => _rootEntity ?? string.Empty;
+    public string RootEntity
+    {
+        get => _rootEntity ?? string.Empty;
+        set => _rootEntity = value;
+    }
 
     public void SetRootEntity(Enum entityName)
     {
         _rootEntity = entityName.GetXmlEnumValue();
     }
-    
+
     public void SetRootEntity(string entityName)
     {
         _rootEntity = entityName;

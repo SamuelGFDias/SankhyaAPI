@@ -11,12 +11,13 @@ public static class SankhyaApiClientFactory
             {
                 BaseAddress = new Uri(baseUrl),
                 Timeout = TimeSpan.FromDays(1),
-                DefaultRequestHeaders = { { "User-Agent", "Refit" }, { "Accept", "*/*" } }
+                DefaultRequestHeaders =
+                {
+                    { "User-Agent", "Refit" },
+                    { "Accept", "*/*" },
+                }
             },
-            new RefitSettings
-            {
-                ContentSerializer = new XmlContentSerializer()
-            });
+            new RefitSettings { ContentSerializer = new XmlContentSerializer() });
 
 
         return client;
@@ -24,17 +25,21 @@ public static class SankhyaApiClientFactory
 
     internal static Interfaces.ISankhyaServiceClient ConfigureClientJson(string baseUrl)
     {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? uri)) throw new ArgumentException("Invalid URL");
+
         var client = RestService.For<Interfaces.ISankhyaServiceClient>(
             new HttpClient
             {
-                BaseAddress = new Uri(baseUrl),
+                BaseAddress = uri,
                 Timeout = TimeSpan.FromDays(1),
-                DefaultRequestHeaders = { { "User-Agent", "Refit" },{ "Accept", "*/*" } }
+                DefaultRequestHeaders =
+                {
+                    { "User-Agent", "Refit" }, { "Accept", "*/*" }
+                }
             },
             new RefitSettings
             {
-                ContentSerializer =
-                    new SystemTextJsonContentSerializer()
+                ContentSerializer = new SystemTextJsonContentSerializer()
             });
 
         return client;
@@ -49,10 +54,7 @@ public static class SankhyaApiClientFactory
                 Timeout = TimeSpan.FromDays(1),
                 DefaultRequestHeaders = { { "User-Agent", "Refit" }, { "Accept", "*/*" } }
             },
-            new RefitSettings
-            {
-                ContentSerializer = new XmlContentSerializer()
-            });
+            new RefitSettings { ContentSerializer = new XmlContentSerializer() });
 
 
         return client;

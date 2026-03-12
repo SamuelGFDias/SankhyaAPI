@@ -1,7 +1,6 @@
 ﻿using System.Text;
 using System.Text.Json.Serialization;
 using System.Xml.Serialization;
-using Newtonsoft.Json;
 using SankhyaAPI.Client.MetaData;
 using SankhyaAPI.Client.Utils;
 
@@ -25,32 +24,26 @@ public abstract class ServiceEnvelope<TEntity> where TEntity : class
         _serviceName = serviceNames;
     }
 
-    [System.Text.Json.Serialization.JsonIgnore]
-    [Newtonsoft.Json.JsonIgnore]
+    [JsonIgnore]
     [XmlAttribute(AttributeName = "outputType")]
     public string? OutputType { get; set; }
 
     [JsonPropertyName("status")]
-    [JsonProperty("status")]
     [XmlAttribute(AttributeName = "status")]
     public string? Status { get; set; }
 
     [JsonPropertyName("pendingPrinting")]
-    [JsonProperty("pendingPrinting")]
     [XmlAttribute(AttributeName = "pendingPrinting")]
     public string? PendingPrinting { get; set; }
 
     [JsonPropertyName("transactionId")]
-    [JsonProperty("transactionId")]
     [XmlAttribute(AttributeName = "transactionId")]
     public string? TransactionId { get; set; }
 
     [JsonPropertyName("requestBody")]
-    [JsonProperty("requestBody")]
     [XmlElement(ElementName = "requestBody")]
-    public RequestBody<TEntity> RequestBody { get; set; } = new();
+    public RequestBody RequestBody { get; set; } = new();
 
-    [JsonProperty("responseBody")]
     [JsonPropertyName("responseBody")]
     [XmlElement(ElementName = "responseBody")]
     public ResponseBody<TEntity> ResponseBody { get; set; } = new();

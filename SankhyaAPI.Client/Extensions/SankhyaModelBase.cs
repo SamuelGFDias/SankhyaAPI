@@ -6,14 +6,14 @@ namespace SankhyaAPI.Client.Extensions;
 
 public class SankhyaModelBase : IModelBase
 {
-    public static void ValidateNullableStateProperties<T>(List<T> objetos)
+    public static void ValidateNullableStateProperties<T>(List<T> objetos, bool isUpdate = false)
         where T : class
     {
         foreach (T obj in objetos)
-            ValidateNullableStateProperties(obj);
+            ValidateNullableStateProperties(obj, isUpdate);
     }
 
-    private static void ValidateNullableStateProperties<T>(T obj)
+    private static void ValidateNullableStateProperties<T>(T obj, bool isUpdate)
         where T : class
     {
         Type type = obj.GetType();
@@ -44,18 +44,6 @@ public class SankhyaModelBase : IModelBase
             if (state == EPropertyState.Clear)
             {
                 throw new ArgumentException($"A chave primária '{property.Name}' não pode estar com estado CLEAR.");
-            }
-
-            Console.WriteLine($"Validando propriedade: {property.Name}, Valor: {value}, Estado: {state}\n");
-
-            switch (primaryKeyAttr.AutoEnumerable)
-            {
-                case true when state != EPropertyState.UnSet:
-                    throw new ArgumentException
-                        ($"A chave primária '{property.Name}' deve estar UNSET porque é AutoEnumerable.");
-                case false when state != EPropertyState.Set:
-                    throw new ArgumentException
-                        ($"A chave primária '{property.Name}' deve estar SET porque não é AutoEnumerable.");
             }
         }
     }

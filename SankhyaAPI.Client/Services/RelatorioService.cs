@@ -1,42 +1,40 @@
-﻿using Microsoft.Extensions.Options;
-using Refit;
+﻿using Refit;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.MetaData;
-using SankhyaAPI.Client.Providers;
 using SankhyaAPI.Client.Requests;
 using SankhyaAPI.Client.Responses;
 
 namespace SankhyaAPI.Client.Services;
 
-public sealed class RelatorioService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
-    : SessionService(sankhyaApiConfig)
+public sealed class RelatorioService(
+    string baseUrl,
+    string userName,
+    string password
+)
+    : SessionService(baseUrl, userName, password)
 {
-    private readonly SankhyaClientSettings _sankhyaConfig = sankhyaApiConfig.Value;
+    private readonly string _userName = userName;
+    private readonly string _password = password;
 
     public async Task<string> GerarRelatorio(int relatorio, List<Parametro> parametros)
     {
-        var envelope = new ServiceRequest<string>()
+        var envelope = new ServiceRequest<string>
         {
-            RequestBody = new RequestBody<string>
+            RequestBody = new RequestBody
             {
-                Relatorio = new Relatorio
-                {
-                    NuRfe = relatorio.ToString(),
-                    Parametros = parametros
-                }
+                Relatorio = new Relatorio { NuRfe = relatorio.ToString(), Parametros = parametros }
             }
         };
         envelope.SetServiceName(EServiceNames.VisualizadorRelatorios);
 
         try
         {
-            await LoginSankhya(_sankhyaConfig.Usuario, _sankhyaConfig.Senha);
+            await LoginSankhya(_userName, _password);
             ApiResponse<ServiceResponse<string>> response = await ClientXml.VisualizadorRelatorio(JSessionId, envelope);
             response.Content!.VerificarErros();
             return response.Content!.ResponseBody.Chave!.Valor!;
-        }
-        catch (Exception ex)
+        } catch (Exception ex)
         {
             await LogoutSankhya();
             throw new Exception(ex.Message);
@@ -56,12 +54,10 @@ public sealed class RelatorioService(IOptions<SankhyaClientSettings> sankhyaApiC
             Stream? content = response.Content;
 
             return content;
-        }
-        catch (Exception ex)
+        } catch (Exception ex)
         {
             throw new Exception(ex.Message);
-        }
-        finally
+        } finally
         {
             await LogoutSankhya();
         }

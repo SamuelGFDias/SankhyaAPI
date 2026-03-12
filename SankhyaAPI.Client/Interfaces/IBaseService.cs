@@ -1,10 +1,12 @@
-﻿namespace SankhyaAPI.Client.Interfaces;
+﻿using SankhyaAPI.Client.Extensions;
+
+namespace SankhyaAPI.Client.Interfaces;
 
 /// <summary>
 /// Interface para os serviços base de CRUD
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public interface IBaseService<T>
+public interface IBaseService<T> where T : SankhyaModelBase, new()
 {
     Task<List<T>> CreateManyAsync(List<T> requests);
     Task<T?> CreateAsync(T request);

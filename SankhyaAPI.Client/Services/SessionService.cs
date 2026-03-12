@@ -1,9 +1,7 @@
-﻿using Microsoft.Extensions.Options;
-using Refit;
+﻿using Refit;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.MetaData;
-using SankhyaAPI.Client.Providers;
 using SankhyaAPI.Client.Requests;
 using SankhyaAPI.Client.Responses;
 using SankhyaAPI.Client.Utils;
@@ -12,47 +10,38 @@ using System.Globalization;
 namespace SankhyaAPI.Client.Services;
 
 /// <summary>
-/// Classe de serviço para gerenciar a abstração de sessões com o Sankhya.
-/// Também inclui métodos para executar consultas usando SQL nativo.
+/// Serviço responsável por gerenciar sessões e realizar operações na API Sankhya.
+/// Esta classe fornece funcionalidades para login, logout, execução de consultas,
+/// e operações CRUD em entidades da API Sankhya.
 /// </summary>
-/// <param name="sankhyaApiConfig">Configurações de configuração para o cliente da API Sankhya.</param>
-public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
-    : DefaultClientService(sankhyaApiConfig), ISankhyaApi
+public class SessionService(string baseUrl, string userName, string password) : DefaultClientService(baseUrl), ISankhyaApi
 {
     /// <summary>
-    /// Armazena as configurações do cliente Sankhya necessárias para autenticação e interação com a API.
-    /// Esta variável contém informações como credenciais e outros parâmetros de configuração.
-    /// </summary>
-    private readonly SankhyaClientSettings _sankhyaConfig = sankhyaApiConfig.Value;
-
-    /// <summary>
     /// Representa a resposta da API obtida a partir de uma chamada de serviço.
-    /// Esta variável encapsula o resultado de uma operação assíncrona para respostas de serviços
-    /// específicas para funcionalidades de login e verificações de validação.
+    /// Esta variável armazena o resultado de operações assíncronas, como autenticação ou validação,
+    /// encapsulando o conteúdo e possíveis erros retornados pela API.
     /// </summary>
     private ApiResponse<ServiceResponse<LoginEntity>>? _apiResponse;
 
     /// <summary>
-    /// Representa o identificador atual da sessão autenticada com a API Sankhya.
+    /// Representa o identificador único da sessão atualmente autenticada com a API Sankhya.
     /// </summary>
     /// <remarks>
-    /// Esta variável armazena o ID da sessão recuperado após o login no sistema Sankhya utilizando a API de Login.
-    /// É essencial para manter o estado da sessão e é necessário para realizar operações que exigem autenticação.
-    /// O valor é redefinido ao efetuar o logout.
+    /// Essa variável armazena o ID da sessão, que é obtido após a autenticação bem-sucedida
+    /// e é utilizado para realizar chamadas subsequentes que requerem autenticação.
+    /// O valor desta variável é redefinido ao realizar o logout.
     /// </remarks>
     private string _sessionId = string.Empty;
 
     /// <summary>
-    /// Representa o identificador de sessão (JSessionId) para a sessão atual da API Sankhya.
-    /// É utilizado para autenticar e manter o estado da sessão nos serviços da API Sankhya.
-    /// Esta variável é atribuída após o login bem-sucedido e é limpa durante o logout.
+    /// Representa o identificador de sessão (JSessionId) associado à sessão ativa da API Sankhya.
+    /// É utilizado para autenticar solicitações e manter o estado da sessão ao interagir com os serviços da API.
+    /// O valor é atribuído no momento do login bem-sucedido e redefinido no logout.
     /// </summary>
     protected string JSessionId = string.Empty;
 
-    #region "Private Methods"
-
     /// <summary>
-    /// Realiza o login do usuário autenticando com as credenciais fornecidas e recupera os detalhes da sessão de login.
+    /// Realiza o login do usuário, autenticando com as credenciais fornecidas e recupera os detalhes da sessão de login.
     /// </summary>
     /// <param name="usuario">O nome de usuário do usuário que está tentando fazer login.</param>
     /// <param name="interno">O identificador interno ou senha do usuário.</param>
@@ -61,8 +50,15 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
     {
         var request = new ServiceRequest<LoginEntity>
         {
-            OutputType = "xml", RequestBody = new RequestBody<LoginEntity> { NomeUsu = usuario, Interno = interno }
+            OutputType = "xml", RequestBody = new RequestBody { NomeUsu = usuario, Interno = interno }
         };
+
+        if (string.IsNullOrWhiteSpace(request.RequestBody.NomeUsu))
+            throw new ArgumentException("Usuário não pode ser vazio", nameof(usuario));
+
+        if (string.IsNullOrWhiteSpace(interno))
+            throw new ArgumentException("Senha não pode ser vazia", nameof(interno));
+
         request.SetServiceName(EServiceNames.Login);
         _apiResponse = await ClientXml.Login(request);
         _apiResponse?.Content?.VerificarErros();
@@ -71,9 +67,9 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
     }
 
     /// <summary>
-    /// Executa o processo de logout de uma sessão específica no sistema Sankhya.
+    /// Encerra a sessão especificada no sistema Sankhya realizando o processo de logout.
     /// </summary>
-    /// <param name="sessionId">Identificador da sessão que será encerrada.</param>
+    /// <param name="sessionId">O identificador único da sessão que deve ser terminada.</param>
     /// <returns>Uma tarefa que representa a operação assíncrona de logout.</returns>
     private async Task Logout(string sessionId)
     {
@@ -83,9 +79,9 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
 
     /// <summary>
     /// Valida o corpo da resposta de uma operação de login.
-    /// Lança uma exceção caso o corpo da resposta seja nulo, indicando uma falha no processo de login.
+    /// Lança uma exceção caso o corpo da resposta seja nulo, indicando uma falha no processo de autenticação.
     /// </summary>
-    /// <exception cref="Exception">Lançada quando o corpo da resposta é nulo.</exception>
+    /// <exception cref="Exception">Lançada quando o corpo da resposta é nulo ou inválido.</exception>
     private void ValidaResponseBodyLogin()
     {
         if (_apiResponse?.Content?.ResponseBody == null)
@@ -93,43 +89,35 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
     }
 
     /// <summary>
-    /// Executes a client request with authentication, ensuring that proper login and logout actions are performed before and after the request.
+    /// Executa uma solicitação do cliente autenticada, garantindo que ações de login e logout sejam realizadas antes e depois da operação.
     /// </summary>
-    /// <typeparam name="T">The type of the entity to be processed.</typeparam>
-    /// <param name="client">The function representing the client operation to be executed.</param>
-    /// <param name="envelope">The envelope containing the request data to be sent to the client.</param>
-    /// <returns>Returns a task representing the asynchronous operation. The task result contains an <see cref="ApiResponse{T}"/> wrapping a <see cref="ServiceResponse{T}"/> object with the operation result.</returns>
-    private async Task<ApiResponse<ServiceResponse<T>>> Execute<T>
-    (
-        Func<
-            string,
-            ServiceRequest<T>,
-            Task<ApiResponse<ServiceResponse<T>>>> client,
+    /// <typeparam name="T">O tipo da entidade a ser processada.</typeparam>
+    /// <param name="client">A função que representa a operação do cliente a ser executada.</param>
+    /// <param name="envelope">O envelope contendo os dados da solicitação a serem enviados ao cliente.</param>
+    /// <returns>Retorna uma tarefa que representa a operação assíncrona. O resultado da tarefa contém um <see cref="ApiResponse{T}"/> encapsulando um objeto <see cref="ServiceResponse{T}"/> com o resultado da operação.</returns>
+    private async Task<ApiResponse<ServiceResponse<T>>> Execute<T>(
+        Func<string, ServiceRequest<T>, Task<ApiResponse<ServiceResponse<T>>>> client,
         ServiceRequest<T> envelope
     )
         where T : class, new()
     {
-        await LoginSankhya(_sankhyaConfig.Usuario, _sankhyaConfig.Senha);
+        await LoginSankhya(userName, password);
         ApiResponse<ServiceResponse<T>> response = await client(JSessionId, envelope);
         await LogoutSankhya();
         return response;
     }
 
     /// <summary>
-    /// Executa uma consulta SQL na forma de script e retorna o corpo da resposta processado.
+    /// Executa uma consulta SQL fornecida no formato de script e retorna o corpo da resposta processado.
     /// </summary>
     /// <typeparam name="T">O tipo que representa a estrutura dos dados retornados pela consulta.</typeparam>
-    /// <param name="script">O script da consulta SQL a ser executado.</param>
-    /// <returns>O corpo da resposta contendo os dados recuperados da consulta.</returns>
+    /// <param name="script">O script SQL que será executado como consulta.</param>
+    /// <returns>Uma tarefa que representa a operação assíncrona. O resultado da tarefa contém o corpo da resposta com os dados recuperados da consulta encapsulados em um objeto <see cref="ResponseBody{T}"/>.</returns>
     /// <exception cref="Exception">Lançada se houver um erro de sintaxe no script SQL fornecido.</exception>
     private async Task<ResponseBody<T>> ExecuteQuery<T>(string script)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute
-                                                   (
-                                                       ClientJson.Query,
-                                                       ExecuteQueryGeneric.CreateQueryEnvelope<T>(script)
-                                                   );
+        ApiResponse<ServiceResponse<T>> response = await Execute(ClientJson.Query, ExecuteQueryGeneric.CreateQueryEnvelope<T>(script));
 
         if (response.Content?.ResponseBody == null)
         {
@@ -140,9 +128,6 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
         return response.Content!.ResponseBody;
     }
 
-    #endregion
-
-    #region "Protected Methods"
 
     /// <summary>
     /// Carrega e recupera os dados de uma consulta para uma lista de objetos do tipo especificado.
@@ -154,11 +139,9 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
     protected async Task<List<T>> LoadRequest<T>(string query, string entityName)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute
-                                                   (
+        ApiResponse<ServiceResponse<T>> response = await Execute(
                                                        ClientXml.LoadRecordsGeneric,
-                                                       LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query)
-                                                   );
+                                                       LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query));
         response.Content?.VerificarErros();
 
         List<T>? entities = response.Content?.ResponseBody.Entities?.Entity;
@@ -176,11 +159,9 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
     protected async Task<List<T>> UpdateRequest<T>(List<T> requests, string entityName)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute
-                                                   (
+        ApiResponse<ServiceResponse<T>> response = await Execute(
                                                        ClientXml.SaveRecordsGeneric,
-                                                       SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName)
-                                                   );
+                                                       SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName));
         response.Content?.VerificarErros();
 
         List<T>? entities = response.Content?.ResponseBody.Entities?.Entity;
@@ -189,20 +170,33 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
     }
 
     /// <summary>
-    /// Creates and sends a request to insert multiple records into a specified entity and returns a list of the saved entities.
+    /// Remove registros de uma entidade específica no sistema Sankhya utilizando as requisições fornecidas.
     /// </summary>
-    /// <typeparam name="T">The type of the entity being processed.</typeparam>
-    /// <param name="requests">A list of entities to be saved.</param>
-    /// <param name="entityName">The name of the entity to which the records will be saved.</param>
-    /// <returns>A task representing the asynchronous operation. The task result contains a list of saved entities of type <typeparamref name="T"/>.</returns>
+    /// <param name="requests">Uma lista de objetos representando os registros que devem ser removidos.</param>
+    /// <param name="entityName">O nome da entidade da qual os registros serão removidos.</param>
+    /// <returns>Uma tarefa que representa a operação assíncrona. Não retorna valor.</returns>
+    protected async Task DeleteRequest<T>(List<T> requests, string entityName)
+        where T : class, new()
+    {
+        ApiResponse<ServiceResponse<T>> response = await Execute(
+                                                       ClientXml.RemoveRecordsGeneric,
+                                                       RemoveRecordsGeneric.CreateRemoveEnvelope(requests, entityName));
+        response.Content?.VerificarErros();
+    }
+
+    /// <summary>
+    /// Cria e envia uma solicitação para inserir vários registros em uma entidade especificada e retorna uma lista das entidades salvas.
+    /// </summary>
+    /// <typeparam name="T">O tipo da entidade sendo processada.</typeparam>
+    /// <param name="requests">Uma lista de entidades a serem salvas.</param>
+    /// <param name="entityName">O nome da entidade na qual os registros serão salvos.</param>
+    /// <returns>Uma tarefa que representa a operação assíncrona. O resultado da tarefa contém uma lista das entidades salvas do tipo <typeparamref name="T"/>.</returns>
     protected async Task<List<T>> CreateRequest<T>(List<T> requests, string entityName)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute
-                                                   (
+        ApiResponse<ServiceResponse<T>> response = await Execute(
                                                        ClientXml.SaveRecordsGeneric,
-                                                       SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName)
-                                                   );
+                                                       SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName));
         response.Content?.VerificarErros();
 
         List<T>? entities = response.Content?.ResponseBody.Entities?.Entity;
@@ -211,11 +205,11 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
     }
 
     /// <summary>
-    /// Executes a SQL query string, maps the results into a list of objects, and returns the populated list.
+    /// Executa uma string de consulta SQL, mapeia os resultados em uma lista de objetos e retorna a lista populada.
     /// </summary>
-    /// <typeparam name="T">The type of objects to which the results will be mapped.</typeparam>
-    /// <param name="script">A SQL query string that defines the data retrieval logic.</param>
-    /// <returns>A task representing the asynchronous operation. The task result contains a list of objects of type T populated with the data retrieved from the query.</returns>
+    /// <typeparam name="T">O tipo de objetos para os quais os resultados serão mapeados.</typeparam>
+    /// <param name="script">Uma string de consulta SQL que define a lógica de recuperação de dados.</param>
+    /// <returns>Uma tarefa que representa a operação assíncrona. O resultado da tarefa contém uma lista de objetos do tipo T preenchida com os dados recuperados da consulta.</returns>
     protected async Task<List<T>> Query<T>(string script)
         where T : class, new()
     {
@@ -242,11 +236,11 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
     }
 
     /// <summary>
-    /// Executes a raw SQL script and retrieves the results as a list of dictionaries.
-    /// Each dictionary represents a row with column names as keys and their respective values.
+    /// Executa um script SQL bruto e recupera os resultados como uma lista de dicionários.
+    /// Cada dicionário representa uma linha, onde os nomes das colunas são as chaves e os valores correspondentes são os valores associados.
     /// </summary>
-    /// <param name="script">The SQL query script to execute.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains a list of dictionaries where each dictionary represents a row with column names as keys and associated values.</returns>
+    /// <param name="script">O script de consulta SQL a ser executado.</param>
+    /// <returns>Uma tarefa que representa a operação assíncrona. O resultado da tarefa contém uma lista de dicionários, onde cada dicionário representa uma linha com nomes de colunas como chaves e seus valores associados.</returns>
     protected async Task<List<Dictionary<string, dynamic?>>> Query(string script)
     {
         ResponseBody<object> response = await ExecuteQuery<object>(script);
@@ -269,42 +263,35 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
                 object value = values[j];
 
                 fields[j]
-                   .Add
-                    (
+                   .Add(
                         key,
                         value switch
                         {
-                            string s =>
-                                DateTime.TryParseExact
-                                (
-                                    s,
-                                    "ddMMyyyy HH:mm:ss",
-                                    CultureInfo.InvariantCulture,
-                                    DateTimeStyles.None,
-                                    out DateTime date
-                                )
-                                    ? date
-                                    : s.Trim(),
+                            string s => DateTime.TryParseExact(
+                                            s,
+                                            "ddMMyyyy HH:mm:ss",
+                                            CultureInfo.InvariantCulture,
+                                            DateTimeStyles.None,
+                                            out DateTime date)
+                                            ? date
+                                            : s.Trim(),
                             _ => value
-                        }
-                    );
+                        });
             }
         }
 
         return fields;
     }
 
-    #endregion
-
-    #region "Public Methods"
 
     /// <summary>
-    /// Realiza o login no Sankhya, estabelecendo uma nova sessão para interação com a API.
-    /// Deve-se garantir que o método <see cref="LogoutSankhya"/> seja chamado ao término do uso da sessão.
+    /// Realiza o login no Sankhya, estabelecendo uma sessão autenticada para comunicação com a API.
+    /// Este método armazena o identificador da sessão e outros detalhes necessários para
+    /// a execução subsequente de operações na API Sankhya.
     /// </summary>
-    /// <param name="usuario">O nome do usuário utilizado para autenticação no Sankhya.</param>
-    /// <param name="interno">A senha ou identificador interno para autenticação.</param>
-    /// <returns>Um objeto <see cref="LoginEntity"/> contendo as informações da sessão, como o identificador da sessão e dados relacionados.</returns>
+    /// <param name="usuario">O nome de usuário utilizado para autenticação no Sankhya.</param>
+    /// <param name="interno">A senha ou identificador interno utilizado para autenticação.</param>
+    /// <returns>Um objeto <see cref="LoginEntity"/> contendo detalhes sobre a sessão criada, incluindo o identificador da sessão e informações relacionadas.</returns>
     public async Task<LoginEntity> LoginSankhya(string usuario, string interno)
     {
         LoginEntity login = await Login(usuario, interno);
@@ -324,6 +311,4 @@ public abstract class SessionService(IOptions<SankhyaClientSettings> sankhyaApiC
         _sessionId = string.Empty;
         JSessionId = string.Empty;
     }
-
-    #endregion
 }

@@ -1,24 +1,48 @@
 ﻿using System.Text;
+using System.Text.Json;
+using System.Xml;
 using System.Xml.Serialization;
 using Azure.Core.Serialization;
-using Newtonsoft.Json;
 
 namespace SankhyaAPI.Client.Extensions;
 
 public static class SerializerServiceExtension
 {
-    public static string XmlSerializer(this object obj)
+    public static string XmlSerializer<T>(this T obj)
     {
-        var serializer = new XmlSerializer(obj.GetType());
+        var serializer = new XmlSerializer(typeof(T));
+        var settings = new XmlWriterSettings
+        {
+            OmitXmlDeclaration = true,
+            Indent = true,
+            Encoding = Encoding.UTF8
+        };
 
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, Encoding.UTF8);
-        serializer.Serialize(writer, obj);
-        writer.Flush();
-        stream.Position = 0;
-        using var reader = new StreamReader(stream, Encoding.UTF8);
-        return reader.ReadToEnd();
+        using var stringWriter = new StringWriter();
+        using var xmlWriter = XmlWriter.Create(stringWriter, settings);
+        serializer.Serialize(xmlWriter, obj);
+        return stringWriter.ToString();
     }
+
+    public static string XmlSerializerWithoutDeclaration<T>(this T obj)
+    {
+        var ns = new XmlSerializerNamespaces();
+        ns.Add("", "");
+
+        var serializer = new XmlSerializer(typeof(T));
+        var settings = new XmlWriterSettings
+        {
+            OmitXmlDeclaration = true,
+            Indent = true,
+            Encoding = Encoding.UTF8
+        };
+
+        using var stringWriter = new StringWriter();
+        using var xmlWriter = XmlWriter.Create(stringWriter, settings);
+        serializer.Serialize(xmlWriter, obj, ns);
+        return stringWriter.ToString();
+    }
+
 
     public static T? XmlDeserialize<T>(this string str)
     {
@@ -28,20 +52,17 @@ public static class SerializerServiceExtension
 
     public static string JsonSerialize(this object obj)
     {
-        var settings = new JsonSerializerSettings
-        {
-            Formatting = Formatting.Indented,
-            StringEscapeHandling = StringEscapeHandling.Default
-        };
+        var options = new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        options.Converters.Add(new NullableStateConverterFactory());
 
-        return JsonConvert.SerializeObject(obj, settings);
+        return JsonSerializer.Serialize(obj, options);
     }
 
 
     public static T? JsonDeserialize<T>(this string str)
     {
         var serializer = new JsonObjectSerializer();
-        var sr = new MemoryStream(Encoding.UTF8.GetBytes(str));
+        using var sr = new MemoryStream(Encoding.UTF8.GetBytes(str));
         return (T?)serializer.Deserialize(sr, typeof(T), CancellationToken.None);
     }
 }

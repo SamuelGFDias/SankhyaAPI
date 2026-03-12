@@ -1,17 +1,15 @@
-﻿using Microsoft.Extensions.Options;
-using SankhyaAPI.Client.ClientFactory;
-using SankhyaAPI.Client.Providers;
+﻿using SankhyaAPI.Client.ClientFactory;
 
 namespace SankhyaAPI.Client.Services;
 
-public abstract class DefaultClientService(IOptions<SankhyaClientSettings> sankhyaApiConfig)
+public abstract class DefaultClientService(string baseUrl)
 {
     protected readonly Interfaces.ISankhyaServiceClient ClientJson =
-        SankhyaApiClientFactory.ConfigureClientJson(sankhyaApiConfig.Value.BaseUrl);
+        SankhyaApiClientFactory.ConfigureClientJson(baseUrl);
 
     protected readonly Interfaces.ISankhyaServiceClient ClientXml =
-        SankhyaApiClientFactory.ConfigureClient(sankhyaApiConfig.Value.BaseUrl);
+        SankhyaApiClientFactory.ConfigureClient(baseUrl);
 
     protected readonly Interfaces.ISankhyaServiceClient ClientFile =
-        SankhyaApiClientFactory.ConfigureClientFile(sankhyaApiConfig.Value.BaseUrl);
+        SankhyaApiClientFactory.ConfigureClientFile(baseUrl);
 }
