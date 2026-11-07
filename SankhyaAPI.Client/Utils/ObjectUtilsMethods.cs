@@ -28,11 +28,11 @@ public static class ObjectUtilsMethods
             decimal d     => d.ToString("G", CultureInfo.InvariantCulture),
             double db     => db.ToString("G", CultureInfo.InvariantCulture),
             Enum e        => e.GetXmlEnumValue(),
-            DateTime dt   => dt.ToString("dd/MM/yyyy HH:mm:ss"),
-            DateOnly dt   => dt.ToString("dd/MM/yyyy"),
-            TimeOnly time => time.ToString("HHmm"),
+            DateTime dt   => dt.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture),
+            DateOnly dt   => dt.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
+            TimeOnly time => time.ToString("HHmm", CultureInfo.InvariantCulture),
             bool b        => b ? "S" : "N",
-            _             => value.ToString()!
+            _             => Convert.ToString(value, CultureInfo.InvariantCulture)!
         };
 
     public static string? GetFormattedString<T>(this T obj, PropertyInfo property)
@@ -77,19 +77,19 @@ public static class ObjectUtilsMethods
             _ when propertyType.IsEnum => ((Enum)value).GetXmlEnumValue(),
 
             // Caso seja DateTime
-            _ when propertyType == typeof(DateTime) => ((DateTime)value).ToString("dd/MM/yyyy HH:mm:ss"),
+            _ when propertyType == typeof(DateTime) => ((DateTime)value).ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture),
 
             // Caso seja DateOnly
-            _ when propertyType == typeof(DateOnly) => ((DateOnly)value).ToString("dd/MM/yyyy"),
+            _ when propertyType == typeof(DateOnly) => ((DateOnly)value).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
 
             // Caso seja TimeOnly
-            _ when propertyType == typeof(TimeOnly) => ((TimeOnly)value).ToString("HHmm"),
+            _ when propertyType == typeof(TimeOnly) => ((TimeOnly)value).ToString("HHmm", CultureInfo.InvariantCulture),
 
             // Caso seja bool
             _ when propertyType == typeof(bool) => (bool)value ? "S" : "N",
 
             // Caso nenhum dos tipos acima seja encontrado
-            _ => value.ToString()
+            _ => Convert.ToString(value, CultureInfo.InvariantCulture)
         };
     }
 
@@ -105,45 +105,13 @@ public static class ObjectUtilsMethods
             object convertedValue = propertyType switch
             {
                 // Conversão para TimeOnly
-                not null when propertyType == typeof(TimeOnly) => TimeOnly.TryParse(xmlElementValue, out TimeOnly time)
-                                                                      ? time
-                                                                      : TimeOnly.TryParseExact(
-                                                                          xmlElementValue.PadLeft(4, '0'),
-                                                                          "HHmm",
-                                                                          out time)
-                                                                          ? time
-                                                                          : throw new Exception(
-                                                                                $"Valor '{xmlElementValue}' não é uma hora válida"),
+                not null when propertyType == typeof(TimeOnly) => ParseTimeOnly(xmlElementValue),
 
                 // Conversão para DateOnly
-                not null when propertyType == typeof(DateOnly) => DateOnly.TryParse(xmlElementValue, out DateOnly date)
-                                                                      ? date
-                                                                      : DateOnly.TryParseExact(xmlElementValue, "dd/MM/yyyy", out date)
-                                                                          ? date
-                                                                          : DateOnly.TryParseExact(xmlElementValue, "ddMMyyyy", out date)
-                                                                              ? date
-                                                                              : throw new Exception(
-                                                                                    $"Valor '{xmlElementValue}' não é uma data válida"),
+                not null when propertyType == typeof(DateOnly) => ParseDateOnly(xmlElementValue),
 
                 // Conversão para DateTime
-                not null when propertyType == typeof(DateTime) => DateTime.TryParse(xmlElementValue, out DateTime dateTime)
-                                                                      ? dateTime
-                                                                      : DateTime.TryParseExact(
-                                                                          xmlElementValue,
-                                                                          "ddMMyyyy HH:mm:ss",
-                                                                          CultureInfo.InvariantCulture,
-                                                                          DateTimeStyles.None,
-                                                                          out dateTime)
-                                                                          ? dateTime
-                                                                          : DateTime.TryParseExact(
-                                                                              xmlElementValue,
-                                                                              "ddMMyyyy",
-                                                                              CultureInfo.InvariantCulture,
-                                                                              DateTimeStyles.None,
-                                                                              out dateTime)
-                                                                              ? dateTime
-                                                                              : throw new Exception(
-                                                                                    $"Valor '{xmlElementValue}' não é uma data válida"),
+                not null when propertyType == typeof(DateTime) => ParseDateTime(xmlElementValue),
 
                 // Conversão para Enums
                 { IsEnum: true } => GetEnumValueFromXml(propertyType, xmlElementValue),
@@ -163,7 +131,7 @@ public static class ObjectUtilsMethods
                                                                     : xmlElementValue,
 
                 // Conversão padrão para outros tipos
-                _ => Convert.ChangeType(xmlElementValue, propertyType!)
+                _ => Convert.ChangeType(xmlElementValue, propertyType!, CultureInfo.InvariantCulture)
             };
 
             if (property.PropertyType is not { IsGenericType: true } genericType
@@ -329,7 +297,7 @@ public static class ObjectUtilsMethods
 
             object? value = prop.GetValue(obj);
 
-            if (value == null) throw new Exception($"Chave prim?ria {keyAttribute.ElementName} n?o pode ser nula");
+            if (value == null) throw new Exception($"Chave primária {keyAttribute.ElementName} não pode ser nula");
 
             string? convertedValue = obj.GetFormattedString(prop);
 
@@ -399,6 +367,37 @@ public static class ObjectUtilsMethods
     }
 
     #region PrivateMethods
+
+    private static readonly string[] DateTimeFormats =
+    [
+        "dd/MM/yyyy HH:mm:ss", "ddMMyyyy HH:mm:ss", "dd/MM/yyyy", "ddMMyyyy"
+    ];
+
+    private static readonly string[] DateFormats = ["dd/MM/yyyy", "ddMMyyyy"];
+
+    // Os formatos do Sankhya são explícitos (dd/MM/yyyy); só o que não bate cai no parse ISO invariante.
+    // Nenhum parse depende da cultura da máquina.
+    private static DateTime ParseDateTime(string value) =>
+        DateTime.TryParseExact(value, DateTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dateTime)
+            ? dateTime
+            : DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out dateTime)
+                ? dateTime
+                : throw new Exception($"Valor '{value}' não é uma data válida");
+
+    private static DateOnly ParseDateOnly(string value) =>
+        DateOnly.TryParseExact(value, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly date)
+            ? date
+            : DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out date)
+                ? date
+                : throw new Exception($"Valor '{value}' não é uma data válida");
+
+    private static TimeOnly ParseTimeOnly(string value) =>
+        TimeOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out TimeOnly time)
+            ? time
+            : TimeOnly.TryParseExact(value.PadLeft(4, '0'), "HHmm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time)
+                ? time
+                : throw new Exception($"Valor '{value}' não é uma hora válida");
+
 
     private static PropertyInfo[] PropertiesFromObject(object obj)
     {
