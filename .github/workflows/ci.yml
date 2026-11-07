@@ -1,0 +1,30 @@
+name: CI
+
+# Build e testes (servidor fake) em push e PR. Os testes contra o Sankhya real ficam "skipped" aqui,
+# porque o CI não tem credenciais.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --logger "console;verbosity=normal"

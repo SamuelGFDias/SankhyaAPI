@@ -5,6 +5,10 @@ VisualStudioVersion = 17.10.35013.160
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SankhyaAPI.Client", "SankhyaAPI.Client\SankhyaAPI.Client.csproj", "{345DFF8A-2076-4A5A-9F1B-1A9CFD412360}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{8BBFA963-E062-4CC9-96BB-268BFE7F1123}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SankhyaAPI.Client.Tests", "tests\SankhyaAPI.Client.Tests\SankhyaAPI.Client.Tests.csproj", "{75DDEA38-7D96-4A67-9217-D6DA4236BCBF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,11 +19,18 @@ Global
 		{345DFF8A-2076-4A5A-9F1B-1A9CFD412360}.Debug|Any CPU.Build.0 = Release|Any CPU
 		{345DFF8A-2076-4A5A-9F1B-1A9CFD412360}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{345DFF8A-2076-4A5A-9F1B-1A9CFD412360}.Release|Any CPU.Build.0 = Release|Any CPU
+		{75DDEA38-7D96-4A67-9217-D6DA4236BCBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{75DDEA38-7D96-4A67-9217-D6DA4236BCBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{75DDEA38-7D96-4A67-9217-D6DA4236BCBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{75DDEA38-7D96-4A67-9217-D6DA4236BCBF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {1D0D95B6-0AF6-4830-B61B-0DD27BFA842E}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{75DDEA38-7D96-4A67-9217-D6DA4236BCBF} = {8BBFA963-E062-4CC9-96BB-268BFE7F1123}
 	EndGlobalSection
 EndGlobal

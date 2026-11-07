@@ -43,10 +43,13 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore "$PROJECT"
+        run: dotnet restore
 
       - name: Build
-        run: dotnet build "$PROJECT" --configuration Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+        run: dotnet build --configuration Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build
 
       - name: Pack
         run: dotnet pack "$PROJECT" --configuration Release --no-build -p:Version=${{ steps.version.outputs.version }} --output ./artifacts
