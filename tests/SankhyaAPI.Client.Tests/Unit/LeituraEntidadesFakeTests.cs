@@ -1,4 +1,5 @@
 using SankhyaAPI.Client.Envelopes;
+using SankhyaAPI.Client.Interfaces;
 using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 
@@ -98,6 +99,16 @@ public class LeituraEntidadesFakeTests : IDisposable
         Assert.Contains("<parameter type=\"S\">X' OR 1=1 --</parameter>", body);
         Assert.Contains("<parameter type=\"I\">0</parameter>", body);
         Assert.Contains("orderByExpression=\"this.CODUSU\"", body);
+    }
+
+    [Fact]
+    public async Task Filtro_parametrizado_e_acessivel_pela_interface()
+    {
+        _fake.ComEntidades(Load, ["0", "SUP"]);
+        IBaseService<Usuario> service = Usuarios();
+
+        Assert.Single(await service.FindAsync("this.CODUSU = ?", [Parameter.Inteiro(0)]));
+        Assert.Contains("<parameter type=\"I\">0</parameter>", _fake.Chamadas(Load).Single().RequestMessage.Body);
     }
 
     [Fact]

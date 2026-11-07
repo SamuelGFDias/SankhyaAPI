@@ -8,6 +8,7 @@ Correções da auditoria (entrega A de `docs/plano-correcao.md`). Nenhuma assina
 
 - `FindAsync(expression, parameters, orderBy)`: filtro com `?` e valores enviados como `<parameter>`, fora da expressão. Fábricas `Parameter.Texto/Inteiro/Decimal/Data/DataHora` (#2).
 - `FindPageAsync(expression, parameters, page, orderBy)`, que devolve `SankhyaPage<T>` (`Items`, `Page`, `HasMoreResult`), com 50 registros por página (#2).
+- `IBaseService<T>` expõe os dois métodos acima, com corpo padrão para não quebrar implementações próprias da interface.
 - `SankhyaException` (`Status`, `ServiceName`, `TsErrorCode`) e `SankhyaSessionExpiredException` (`status="3"`), no namespace `SankhyaAPI.Client.Exceptions` (#5).
 
 ### Corrigido
