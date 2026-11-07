@@ -33,6 +33,12 @@ public class DataSet
     [XmlAttribute(AttributeName = "disableRowsLimit")]
     public string DisableRowsLimit { get; set; } = "false";
 
+    /// <summary>
+    /// Página a carregar (começa em 0), usada com <see cref="DisableRowsLimit"/> = "false". Nula não é enviada.
+    /// </summary>
+    [XmlAttribute(AttributeName = "offsetPage")]
+    public string? OffsetPage { get; set; }
+
     [XmlAttribute(AttributeName = "orderByExpression")]
     public string? OrderByExpression { get; set; } = string.Empty;
 

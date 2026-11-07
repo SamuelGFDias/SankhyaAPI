@@ -36,6 +36,17 @@ public class UsuarioLinha
     [XmlElement("NOMEUSU")] public string? NomeUsu { get; set; }
 }
 
+/// <summary>
+/// Tabela AD_TESTE da homologação, criada só para testes reais de escrita (um campo: ID).
+/// </summary>
+public class AdTeste : SankhyaModelBase
+{
+    [Key("ID")] public NullableState<int> Id { get; set; }
+}
+
+public class AdTesteService(string baseUrl, string userName, string password)
+    : BaseService<AdTeste>(baseUrl, userName, password, "AD_TESTE");
+
 public class UsuarioService(string baseUrl, string userName, string password)
     : BaseService<Usuario>(baseUrl, userName, password, "Usuario");
 

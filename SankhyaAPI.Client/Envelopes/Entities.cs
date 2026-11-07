@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
@@ -6,10 +7,22 @@ using SankhyaAPI.Client.Utils;
 
 namespace SankhyaAPI.Client.Envelopes;
 
-public class Entities<TEntity> : IXmlSerializable where TEntity : class
+public partial class Entities<TEntity> : IXmlSerializable where TEntity : class
 {
     [XmlAttribute(AttributeName = "total")]
     public string? Total { get; set; }
+
+    /// <summary>
+    /// Há mais registros além desta página (loadRecords paginado).
+    /// </summary>
+    [XmlIgnore]
+    public bool HasMoreResult { get; set; }
+
+    /// <summary>
+    /// Página devolvida (começa em 0), quando a consulta é paginada.
+    /// </summary>
+    [XmlIgnore]
+    public int? OffsetPage { get; set; }
 
     [XmlElement(ElementName = "metadata")] public Metadata? Metadata { get; set; }
 
@@ -20,41 +33,104 @@ public class Entities<TEntity> : IXmlSerializable where TEntity : class
         return null;
     }
 
+    /// <summary>
+    /// Lê <c>&lt;entities&gt;</c> até o seu fechamento e para ali, sem consumir o que vem depois no
+    /// <c>responseBody</c>. Cada coluna é mapeada pelo nome, não pela posição: <c>fN</c> é resolvido pela
+    /// <c>&lt;metadata&gt;</c> da resposta ou, sem ela, pelos campos pedidos no envelope.
+    /// </summary>
     public void ReadXml(XmlReader reader)
     {
-        // Lê o atributo "total" no elemento <entities>
-        if (reader.MoveToAttribute("total"))
+        Total = reader.GetAttribute("total");
+        HasMoreResult = reader.GetAttribute("hasMoreResult") == "true";
+        OffsetPage = int.TryParse(reader.GetAttribute("offsetPage"), out int offsetPage) ? offsetPage : null;
+
+        if (reader.IsEmptyElement)
         {
-            Total = reader.Value;
-            reader.MoveToElement(); // Retorna para o elemento <entities>
+            reader.Read();
+            return;
         }
 
-            // Lê cada <entity> dentro de <entities>
-            while (reader.ReadToFollowing("entity"))
+        ModelMap map = ModelMap.For(typeof(TEntity));
+        List<string?> colunas = map.Mapped.Select(p => p.XmlName).ToList();
+
+        reader.ReadStartElement();
+
+        while (reader.MoveToContent() == XmlNodeType.Element)
+        {
+            switch (reader.LocalName)
             {
-                var entityInstance = Activator.CreateInstance<TEntity>();
-                PropertyInfo[] properties = entityInstance.GetType().GetProperties();
-                reader.Read(); // Entra no elemento <entity>
+                case "metadata":
+                    Metadata = ReadMetadata(reader);
+                    if (Metadata.Fields is { Count: > 0 } fields)
+                        colunas = fields.Select(f => f.Nome).ToList();
+                    break;
 
-                // Itera sobre as propriedades e mapeia cada uma delas para o XML
-                for (int i = 0; i < properties.Length; i++)
-                {
-                    PropertyInfo property = properties[i];
-                    string? xmlElementName = property.GetXmlElementName();
+                case "entity":
+                    Entity.Add(ReadEntity(reader, map, colunas));
+                    break;
 
-                    if (xmlElementName == null ||
-                        !reader.IsStartElement(xmlElementName) && !reader.IsStartElement($"f{i}")) continue;
-
-                    string value = reader.ReadElementContentAsString();
-                    object? convertedValue = ObjectUtilsMethods.ConvertForPropertyType(value, property);
-
-                    property.SetValue(entityInstance, convertedValue);
-                }
-
-                // Adiciona a instância preenchida à lista de entidades
-                Entity.Add(entityInstance);
+                default:
+                    reader.Skip();
+                    break;
             }
+        }
+
+        reader.ReadEndElement();
     }
+
+    private static Metadata ReadMetadata(XmlReader reader)
+    {
+        var metadata = new Metadata { Fields = [] };
+
+        using XmlReader subtree = reader.ReadSubtree();
+        while (subtree.ReadToFollowing("field"))
+            metadata.Fields.Add(new Field { Nome = subtree.GetAttribute("name") });
+
+        reader.Skip();
+        return metadata;
+    }
+
+    private static TEntity ReadEntity(XmlReader reader, ModelMap map, List<string?> colunas)
+    {
+        var entity = Activator.CreateInstance<TEntity>();
+
+        if (reader.IsEmptyElement)
+        {
+            reader.Read();
+            return entity;
+        }
+
+        reader.ReadStartElement();
+
+        while (reader.MoveToContent() == XmlNodeType.Element)
+        {
+            PropertyMap? property = map.ByXmlName(NomeDaColuna(reader.LocalName, colunas));
+
+            if (property == null)
+            {
+                reader.Skip();
+                continue;
+            }
+
+            string value = reader.ReadElementContentAsString();
+            property.SetValue(entity, ObjectUtilsMethods.ConvertForPropertyType(value, property.Property));
+        }
+
+        reader.ReadEndElement();
+        return entity;
+    }
+
+    private static string NomeDaColuna(string elemento, List<string?> colunas)
+    {
+        Match match = ColunaPosicional().Match(elemento);
+        if (!match.Success) return elemento;
+
+        int indice = int.Parse(match.Groups[1].Value);
+        return indice < colunas.Count ? colunas[indice] ?? elemento : elemento;
+    }
+
+    [GeneratedRegex(@"^f(\d+)$")]
+    private static partial Regex ColunaPosicional();
 
     public void WriteXml(XmlWriter writer)
     {

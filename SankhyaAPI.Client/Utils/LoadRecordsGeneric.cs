@@ -1,3 +1,4 @@
+using System.Globalization;
 using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.MetaData;
 using SankhyaAPI.Client.Requests;
@@ -17,12 +18,14 @@ public class LoadRecordsGeneric
     /// <param name="expression">Expressão de filtro SQL.</param>
     /// <param name="orderBy">Expressão de ordenação SQL.</param>
     /// <param name="parameters">Lista de parâmetros para a expressão de filtro.</param>
+    /// <param name="page">Página a carregar (começa em 0). Nulo carrega tudo, sem limite de linhas.</param>
     /// <returns>Um <see cref="Task{ServiceRequest{T}}"/> representando a operação assíncrona.</returns>
     public static ServiceRequest<T> CreateLoadEnvelope<T>(
         string entityName,
         string expression = "",
         string? orderBy = null,
-        List<Parameter>? parameters = null)
+        List<Parameter>? parameters = null,
+        int? page = null)
         where T : class, new()
     {
         var envelope = new ServiceRequest<T>
@@ -31,7 +34,8 @@ public class LoadRecordsGeneric
             {
                 DataSet = new DataSet
                 {
-                    DisableRowsLimit = "true",
+                    DisableRowsLimit = page == null ? "true" : "false",
+                    OffsetPage = page?.ToString(CultureInfo.InvariantCulture),
                     OrderByExpression = orderBy,
                     Criteria = new Criteria
                     {

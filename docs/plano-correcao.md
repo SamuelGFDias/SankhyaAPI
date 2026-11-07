@@ -142,9 +142,22 @@ Paralelizável dentro de cada entrega: em A, {A2, A4, A5, A7, A8} não se tocam;
 - Issues da entrega fechadas pelo PR (`Closes #N`).
 - Changelog com o que mudou de comportamento (A7, A1) e, na 6.0, guia de migração.
 
-## Decisões abertas (para você)
+## Decisões
 
-1. **Entidade para teste real de escrita** na homologação (A10, e testes de create/update/delete). Sugestão: uma tabela `AD_` criada só para teste, ou um parceiro/produto marcado e apagado no fim do teste.
-2. **Target frameworks na 6.0:** só `net8.0`, ou `net8.0` + `net9.0`/`net10.0`. `netstandard2.0` não é recomendado, porque perde `DateOnly`/`TimeOnly`, `static abstract` e `ModuleInitializer`.
-3. **Generator obrigatório ou opcional:** o plano mantém a reflexão como fallback (migração gradual). A alternativa é exigir `partial` na 6.0 e apagar o caminho por reflexão, que fica mais simples de manter mas obriga todo consumidor a mudar os modelos.
-4. **Modo de sessão padrão na 6.0** (B4): manter `PorOperacao` (comportamento atual) ou passar a `Compartilhada`.
+Tomadas em 2026-11-07:
+
+1. **Entidade para teste real de escrita:** tabela `AD_TESTE` da homologação (instância `AD_TESTE`, um campo `ID` inteiro, sem auto numeração). Testes em `Real/EscritaRealTests.cs`, trait `RealEscrita`. Como ela não tem campo texto, a escrita com acento (#15) não é testada. O encoding foi verificado pelo caminho de leitura (`LEN(?) = 1` com `'Ã'`).
+2. **Generator opcional**, com a reflexão em cache como fallback (C1 como descrito).
+3. **Modo de sessão padrão na 6.0: `Compartilhada`.** Isso contraria a recomendação inicial (`PorOperacao`). O B4 passa a ter o modo compartilhado como padrão, e o guia de migração precisa avisar da mudança de comportamento (uma sessão por instância, renovada ao receber `SankhyaSessionExpiredException`).
+
+Ainda aberta:
+
+4. **Target frameworks na 6.0:** só `net8.0`, ou `net8.0` + `net9.0`/`net10.0`. `netstandard2.0` não é recomendado, porque perde `DateOnly`/`TimeOnly`, `static abstract` e `ModuleInitializer`.
+
+## Constatado na homologação (entrega A)
+
+- Banco SQL Server 2022.
+- Sessão inválida ou expirada devolve `status="3"` com "Não autorizado.", tanto no XML quanto no JSON. Logout devolve `status="1"`.
+- O loadRecords devolve `<metadata><fields><field name=...>` e acrescenta campos de apresentação no fim (`includePresentationFields="S"`). A paginação vem com `disableRowsLimit="false"` e `offsetPage`, 50 registros por página, e a resposta traz `hasMoreResult`.
+- O servidor lê o corpo XML como UTF-8, qualquer que seja o charset declarado.
+- Sem `outputType=json`, o executeQuery com erro responde em XML.

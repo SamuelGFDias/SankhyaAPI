@@ -1,4 +1,5 @@
-﻿using SankhyaAPI.Client.Extensions;
+﻿using SankhyaAPI.Client.Envelopes;
+using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.Interfaces;
 
 namespace SankhyaAPI.Client.Services;
@@ -84,8 +85,49 @@ public abstract class BaseService<T>(string baseUrl, string userName, string pas
     }
 
     /// <summary>
+    /// Busca registros com filtro parametrizado. Use <c>?</c> na expressão no lugar de cada valor e passe os
+    /// valores em <paramref name="parameters"/>, na mesma ordem: eles vão separados da expressão, então um valor
+    /// vindo do usuário não vira SQL.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// await service.FindAsync("this.NOMEPARC LIKE ? AND this.CODCID = ?",
+    ///     [Parameter.Texto(nome + "%"), Parameter.Inteiro(codCid)]);
+    /// </code>
+    /// </example>
+    /// <param name="expression">Expressão de filtro, com <c>?</c> no lugar de cada valor.</param>
+    /// <param name="parameters">Valores dos <c>?</c>, em ordem (veja as fábricas de <see cref="Parameter"/>).</param>
+    /// <param name="orderBy">Ordenação, por exemplo <c>"this.CODPARC DESC"</c>. Não deve conter entrada do usuário.</param>
+    public async Task<List<T>> FindAsync(string expression, IEnumerable<Parameter> parameters, string? orderBy = null)
+    {
+        return await LoadRequest<T>(expression, entityName, parameters, orderBy);
+    }
+
+    /// <summary>
+    /// Busca uma página de registros (até 50 por página, limite do Sankhya). Repita com <c>page + 1</c>
+    /// enquanto <see cref="SankhyaPage{T}.HasMoreResult"/> for verdadeiro.
+    /// </summary>
+    /// <param name="expression">Expressão de filtro, com <c>?</c> no lugar de cada valor.</param>
+    /// <param name="parameters">Valores dos <c>?</c>, em ordem; nulo quando não há.</param>
+    /// <param name="page">Página, começando em 0.</param>
+    /// <param name="orderBy">Ordenação. Use uma ordenação estável para paginar sem repetir registros.</param>
+    public async Task<SankhyaPage<T>> FindPageAsync(
+        string expression,
+        IEnumerable<Parameter>? parameters,
+        int page,
+        string? orderBy = null)
+    {
+        return await LoadPageRequest<T>(expression, entityName, parameters, orderBy, page);
+    }
+
+    /// <summary>
     /// Executa uma consulta SQL crua no banco de dados e retorna os resultados como uma lista de objetos do tipo <typeparamref name="TQuery"/>.
     /// </summary>
+    /// <remarks>
+    /// O SQL vai para o servidor como está, com o poder do usuário de integração. Nunca concatene nele valores
+    /// vindos do usuário: para filtrar entidades com valores externos, use
+    /// <see cref="FindAsync(string, IEnumerable{Parameter}, string?)"/>.
+    /// </remarks>
     /// <param name="script">O comando SQL bruto a ser executado.</param>
     /// <returns>Retorna uma lista de objetos do tipo <typeparamref name="TQuery"/> contendo os resultados da consulta.</returns>
     public async Task<List<TQuery>> QueryRawAsync<TQuery>(string script)
@@ -97,6 +139,9 @@ public abstract class BaseService<T>(string baseUrl, string userName, string pas
     /// <summary>
     /// Executa uma consulta de script em formato SQL-like e retorna o resultado como uma lista de dicionários.
     /// </summary>
+    /// <remarks>
+    /// O SQL vai para o servidor como está. Nunca concatene nele valores vindos do usuário.
+    /// </remarks>
     /// <param name="script">O script de consulta em formato SQL-like a ser executado.</param>
     /// <returns>Retorna uma lista de dicionários, onde cada dicionário representa uma linha do resultado, com as chaves como nomes das colunas e os valores como os dados correspondentes.</returns>
     public async Task<List<Dictionary<string, object?>>> QueryAsDictionaryAsync(string script)

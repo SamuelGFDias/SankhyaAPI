@@ -9,7 +9,7 @@ public interface ISankhyaServiceClient
     [Post("/service.sbr?serviceName=MobileLoginSP.login")]
     Task<ApiResponse<ServiceResponse<LoginEntity>>> Login([Body] ServiceRequest<LoginEntity> loginRequestBody);
 
-    [Post("/service.sbr?serviceName=DbExplorerSP.executeQuery")]
+    [Post("/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json")]
     Task<ApiResponse<ServiceResponse<TEntity>>> Query<TEntity>(
         [Header("Cookie")] string cookie,
         [Body] ServiceRequest<TEntity> entityRequestBody
@@ -32,11 +32,11 @@ public interface ISankhyaServiceClient
     );
 
 
-    [Post("/mge/service.sbr?serviceName=MobileLoginSP.logout")]
+    [Post("/service.sbr?serviceName=MobileLoginSP.logout")]
     Task<ApiResponse<ServiceResponse<object>>> Logout([Header("Cookie")] string cookie);
 
     [Post("/service.sbr?serviceName=CRUDServiceProvider.loadRecords")]
-    [Headers("Content-Type: text/xml; charset=ISO-8859-1")]
+    [Headers("Content-Type: text/xml; charset=UTF-8")]
     Task<ApiResponse<ServiceResponse<TEntity>>> LoadRecordsGeneric<TEntity>(
         [Header("Cookie")] string cookie,
         [Body] ServiceRequest<TEntity> entityRequestBody
@@ -51,7 +51,7 @@ public interface ISankhyaServiceClient
         where TEntity : class, new();
 
     [Post("/service.sbr?serviceName=CRUDServiceProvider.removeRecord")]
-    [Headers("Content-Type: text/xml; charset=ISO-8859-1")]
+    [Headers("Content-Type: text/xml; charset=UTF-8")]
     Task<ApiResponse<ServiceResponse<TEntity>>> RemoveRecordsGeneric<TEntity>(
         [Header("Cookie")] string cookie,
         [Body] ServiceRequest<TEntity> entityRequestBody

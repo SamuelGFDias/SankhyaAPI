@@ -1,11 +1,13 @@
 ﻿using Refit;
 using SankhyaAPI.Client.Envelopes;
+using SankhyaAPI.Client.Exceptions;
 using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.MetaData;
 using SankhyaAPI.Client.Requests;
 using SankhyaAPI.Client.Responses;
 using SankhyaAPI.Client.Utils;
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 
 namespace SankhyaAPI.Client.Services;
 
@@ -81,7 +83,7 @@ public class SessionService(string baseUrl, string userName, string password) : 
     /// <returns>Uma tarefa que representa a operação assíncrona de logout.</returns>
     private async Task Logout(string sessionId)
     {
-        ApiResponse<ServiceResponse<object>> apiResponse = await ClientXml.Logout($"{sessionId}.master");
+        ApiResponse<ServiceResponse<object>> apiResponse = await ClientXml.Logout($"JSESSIONID={sessionId}");
         EnsureContent(apiResponse).VerificarErros();
     }
 
@@ -93,7 +95,7 @@ public class SessionService(string baseUrl, string userName, string password) : 
     private static void ValidaResponseBodyLogin(ServiceResponse<LoginEntity> content)
     {
         if (content.ResponseBody == null)
-            throw new Exception("Alguma coisa saiu mal no login");
+            throw new SankhyaException("O login no Sankhya não devolveu o corpo da resposta.", content.Status, content.ServiceName);
     }
 
     /// <summary>
@@ -110,8 +112,17 @@ public class SessionService(string baseUrl, string userName, string password) : 
                 response.Error,
                 response.StatusCode);
 
-        return response.Content
-            ?? throw new HttpRequestException("A resposta do Sankhya veio sem conteúdo.");
+        if (response.Content != null) return response.Content;
+
+        // Falha ao ler a resposta: o erro de conversão de campo vem embrulhado pelo Refit e pelo XmlSerializer.
+        // Ele é devolvido como está, porque já foi montado sem o valor do campo (que pode ser dado pessoal).
+        for (Exception? erro = response.Error; erro != null; erro = erro.InnerException)
+        {
+            if (erro is FormatException { Data: var data } && data.Contains("Valor"))
+                ExceptionDispatchInfo.Throw(erro);
+        }
+
+        throw new HttpRequestException("A resposta do Sankhya veio sem conteúdo ou não pôde ser lida.", response.Error);
     }
 
     /// <summary>
@@ -162,7 +173,7 @@ public class SessionService(string baseUrl, string userName, string password) : 
     /// <typeparam name="T">O tipo que representa a estrutura dos dados retornados pela consulta.</typeparam>
     /// <param name="script">O script SQL que será executado como consulta.</param>
     /// <returns>Uma tarefa que representa a operação assíncrona. O resultado da tarefa contém o corpo da resposta com os dados recuperados da consulta encapsulados em um objeto <see cref="ResponseBody{T}"/>.</returns>
-    /// <exception cref="Exception">Lançada se houver um erro de sintaxe no script SQL fornecido.</exception>
+    /// <exception cref="SankhyaException">Lançada quando o Sankhya recusa a consulta ou não devolve o resultado.</exception>
     private async Task<ResponseBody<T>> ExecuteQuery<T>(string script)
         where T : class, new()
     {
@@ -170,7 +181,10 @@ public class SessionService(string baseUrl, string userName, string password) : 
 
         if (response.ResponseBody == null)
         {
-            throw new Exception("Erro de sintaxe na consulta. Confira o script SQL passado como parâmetro.");
+            throw new SankhyaException(
+                "Erro de sintaxe na consulta. Confira o script SQL passado como parâmetro.",
+                response.Status,
+                response.ServiceName);
         }
 
         return response.ResponseBody;
@@ -187,11 +201,48 @@ public class SessionService(string baseUrl, string userName, string password) : 
     protected async Task<List<T>> LoadRequest<T>(string query, string entityName)
         where T : class, new()
     {
-        ServiceResponse<T> response = await Execute(ClientXml.LoadRecordsGeneric, LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query));
+        return await LoadRequest<T>(query, entityName, null, null);
+    }
+
+    /// <summary>
+    /// Carrega registros com filtro parametrizado: cada <c>?</c> da expressão recebe, em ordem, um item de
+    /// <paramref name="parameters"/>, enviado separado da expressão.
+    /// </summary>
+    protected async Task<List<T>> LoadRequest<T>(
+        string expression,
+        string entityName,
+        IEnumerable<Parameter>? parameters,
+        string? orderBy)
+        where T : class, new()
+    {
+        ServiceRequest<T> envelope = LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, expression, orderBy, parameters?.ToList());
+        ServiceResponse<T> response = await Execute(ClientXml.LoadRecordsGeneric, envelope);
 
         List<T>? entities = response.ResponseBody.Entities?.Entity;
 
         return entities ?? [];
+    }
+
+    /// <summary>
+    /// Carrega uma página de registros (o Sankhya devolve até 50 por página).
+    /// </summary>
+    /// <param name="page">Página a carregar, começando em 0.</param>
+    protected async Task<SankhyaPage<T>> LoadPageRequest<T>(
+        string expression,
+        string entityName,
+        IEnumerable<Parameter>? parameters,
+        string? orderBy,
+        int page)
+        where T : class, new()
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(page);
+
+        ServiceRequest<T> envelope = LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, expression, orderBy, parameters?.ToList(), page);
+        ServiceResponse<T> response = await Execute(ClientXml.LoadRecordsGeneric, envelope);
+
+        Entities<T>? entities = response.ResponseBody.Entities;
+
+        return new SankhyaPage<T>(entities?.Entity ?? [], page, entities?.HasMoreResult ?? false);
     }
 
     /// <summary>
@@ -253,18 +304,11 @@ public class SessionService(string baseUrl, string userName, string password) : 
 
         if (response.FieldsMetadata is null) return [];
 
-        var fields = new Dictionary<string, List<object>?>();
-        List<string> keys = response.FieldsMetadata.Select(a => a.Name).ToList();
-        List<List<object>>? rows = response.Rows;
+        List<List<object>> rows = response.Rows ?? [];
+        var fields = new Dictionary<string, List<object>?>(StringComparer.OrdinalIgnoreCase);
 
-        for (int i = 0; i < keys.Count; i++)
-        {
-            int order = response.FieldsMetadata[i].Order - 1;
-            string key = keys[order];
-            List<object>? values = rows?.Select(t => t[order]).ToList();
-
-            fields.Add(key, values);
-        }
+        foreach ((string nome, int indice) in Colunas(response.FieldsMetadata))
+            fields.Add(nome, rows.Select(row => row[indice]).ToList());
 
         List<T> list = ObjectUtilsMethods.GetListOfObjectsFromDictionary<T>(fields);
 
@@ -283,40 +327,36 @@ public class SessionService(string baseUrl, string userName, string password) : 
 
         if (response.FieldsMetadata is null) return [];
 
-        var fields = new List<Dictionary<string, object?>>();
-        List<string> keys = response.FieldsMetadata.Select(a => a.Name).ToList();
-        List<List<object>>? rows = response.Rows;
+        List<(string Nome, int Indice)> colunas = Colunas(response.FieldsMetadata);
 
-        for (int i = 0; i < keys.Count; i++)
+        return (response.Rows ?? [])
+              .Select(row => colunas.ToDictionary(c => c.Nome, c => ConverterValorDaConsulta(row[c.Indice])))
+              .ToList();
+    }
+
+    private static object? ConverterValorDaConsulta(object? value) =>
+        value switch
         {
-            int order = response.FieldsMetadata[i].Order - 1;
-            string key = keys[order];
-            List<object>? values = rows?.Select(t => t[order]).ToList();
+            string s => DateTime.TryParseExact(s, "ddMMyyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date)
+                            ? date
+                            : s.Trim(),
+            _ => value
+        };
 
-            for (int j = 0; j < values?.Count; j++)
-            {
-                if (fields.Count <= j) fields.Add(new());
-                object value = values[j];
+    /// <summary>
+    /// Nome e posição de cada coluna da consulta. A posição vem do <c>order</c> de cada coluna, não da ordem
+    /// em que o <c>fieldsMetadata</c> chega.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Quando duas colunas têm o mesmo nome.</exception>
+    private static List<(string Nome, int Indice)> Colunas(List<FieldsMetadata> fieldsMetadata)
+    {
+        string? repetida = fieldsMetadata.GroupBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                                         .FirstOrDefault(g => g.Count() > 1)?.Key;
+        if (repetida != null)
+            throw new InvalidOperationException(
+                $"A consulta devolveu a coluna '{repetida}' mais de uma vez. Dê um alias (AS) diferente a cada coluna.");
 
-                fields[j]
-                   .Add(
-                        key,
-                        value switch
-                        {
-                            string s => DateTime.TryParseExact(
-                                            s,
-                                            "ddMMyyyy HH:mm:ss",
-                                            CultureInfo.InvariantCulture,
-                                            DateTimeStyles.None,
-                                            out DateTime date)
-                                            ? date
-                                            : s.Trim(),
-                            _ => value
-                        });
-            }
-        }
-
-        return fields;
+        return fieldsMetadata.Select(f => (f.Name, f.Order - 1)).ToList();
     }
 
 

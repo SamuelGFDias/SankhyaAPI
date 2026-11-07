@@ -1,4 +1,5 @@
 using System.Globalization;
+using SankhyaAPI.Client.Exceptions;
 using SankhyaAPI.Client.MetaData;
 using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
@@ -110,6 +111,26 @@ public class CrudFakeTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_sem_chave_que_nao_e_auto_enumerada_e_rejeitado_sem_chamar_o_servidor()
+    {
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => Usuarios().CreateAsync(new Usuario { NomeUsu = "X" }));
+
+        Assert.Equal(nameof(Usuario.CodUsu), ex.ParamName);
+        Assert.Empty(_fake.Chamadas(Save));
+    }
+
+    [Fact]
+    public async Task CreateAsync_envia_a_chave_que_nao_e_auto_enumerada()
+    {
+        _fake.ComEntidades(Save, ["7", "NOVO"]);
+
+        Usuario? criado = await Usuarios().CreateAsync(new Usuario { CodUsu = 7, NomeUsu = "NOVO" });
+
+        Assert.Contains("<CODUSU>7</CODUSU>", _fake.Chamadas(Save).Single().RequestMessage.Body);
+        Assert.Equal(7, criado!.CodUsu.Value);
+    }
+
+    [Fact]
     public async Task UpdateAsync_sem_chave_e_rejeitado()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(() => Produtos().UpdateAsync(new Produto { DescrProd = "X" }));
@@ -160,9 +181,11 @@ public class CrudFakeTests : IDisposable
     {
         _fake.ComErro(Load, "Usuário sem permissão");
 
-        var ex = await Assert.ThrowsAsync<Exception>(() => Usuarios().FindAsync("1 = 1"));
+        var ex = await Assert.ThrowsAsync<SankhyaException>(() => Usuarios().FindAsync("1 = 1"));
 
         Assert.Contains("Usuário sem permissão", ex.Message);
+        Assert.Equal("0", ex.Status);
+        Assert.Equal(Load, ex.ServiceName);
     }
 
     [Fact]
@@ -178,7 +201,7 @@ public class CrudFakeTests : IDisposable
     {
         _fake.ComErro(Login, "Usuário/Senha inválido.");
 
-        var ex = await Assert.ThrowsAsync<Exception>(() => Usuarios().FindAsync("1 = 1"));
+        var ex = await Assert.ThrowsAsync<SankhyaException>(() => Usuarios().FindAsync("1 = 1"));
 
         Assert.Contains("inválido", ex.Message);
         Assert.Empty(_fake.Chamadas(Load));
@@ -194,7 +217,7 @@ public class CrudFakeTests : IDisposable
         Assert.Single(_fake.Chamadas(Logout));
     }
 
-    [Fact(Skip = "Bug conhecido: logout chama /mge/mge/service.sbr (#1)")]
+    [Fact]
     public async Task Logout_usa_a_mesma_rota_dos_demais_servicos()
     {
         _fake.ComEntidades(Load, ["0", "SUP"]);
@@ -204,7 +227,7 @@ public class CrudFakeTests : IDisposable
         Assert.Equal(SankhyaFakeServer.ServicePath, _fake.Chamadas(Logout).Single().RequestMessage.Path);
     }
 
-    [Fact(Skip = "Bug conhecido: logout envia cookie sem JSESSIONID= (#1)")]
+    [Fact]
     public async Task Logout_envia_o_cookie_JSESSIONID_da_sessao()
     {
         _fake.ComEntidades(Load, ["0", "SUP"]);
