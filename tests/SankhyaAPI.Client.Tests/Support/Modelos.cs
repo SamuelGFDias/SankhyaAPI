@@ -83,6 +83,19 @@ public class CidadeLinha
 public class CidadeService(string baseUrl, string userName, string password)
     : BaseService<Cidade>(baseUrl, userName, password, "Cidade");
 
+/// <summary>
+/// Chave composta com um único campo auto-numerado (como item de nota: NUNOTA + SEQUENCIA).
+/// </summary>
+public class ItemNota : SankhyaModelBase
+{
+    [Key("NUNOTA")] public NullableState<long> NuNota { get; set; }
+    [Key("SEQUENCIA", true)] public NullableState<int> Sequencia { get; set; }
+    [XmlElement("QTDNEG")] public NullableState<decimal> Quantidade { get; set; }
+}
+
+public class ItemNotaService(string baseUrl, string userName, string password)
+    : BaseService<ItemNota>(baseUrl, userName, password, "ItemNota");
+
 public class UsuarioService(string baseUrl, string userName, string password)
     : BaseService<Usuario>(baseUrl, userName, password, "Usuario");
 
