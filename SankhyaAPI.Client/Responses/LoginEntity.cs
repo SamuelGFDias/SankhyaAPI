@@ -11,6 +11,6 @@ public class LoginEntity
     [XmlElement("idusu")]
     public string? IdUsu
     {
-        set => CodUsu = Convert.ToInt32(value ?? "");
+        set => CodUsu = int.TryParse(value, out int codUsu) ? codUsu : 0;
     }
 }

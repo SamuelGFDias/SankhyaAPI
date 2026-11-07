@@ -1,4 +1,4 @@
-﻿using System.Text;
+﻿using SankhyaAPI.Client.Utils;
 using System.Text.Json.Serialization;
 using System.Xml.Serialization;
 
@@ -14,9 +14,7 @@ public class ResponseBody<TEntity> where TEntity : class
     public string? IdUsuario
     {
         get => _idUsuDecoded;
-        set => _idUsuDecoded = value != null
-            ? Encoding.GetEncoding("ISO-8859-1").GetString(Convert.FromBase64String(value))
-            : null;
+        set => _idUsuDecoded = SankhyaText.DecodeBase64(value);
     }
 
     [JsonPropertyName("callID")]

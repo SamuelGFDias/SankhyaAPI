@@ -1,3 +1,4 @@
+using SankhyaAPI.Client.Exceptions;
 using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 
@@ -29,7 +30,7 @@ public class QueryFakeTests : IDisposable
         Assert.Contains("\"sql\":\"SELECT CODUSU, NOMEUSU FROM TSIUSU\"", body);
     }
 
-    [Fact(Skip = "Bug conhecido: coluna lida por keys[order] (#3)")]
+    [Fact]
     public async Task QueryRawAsync_respeita_a_ordem_declarada_no_metadata()
     {
         // fieldsMetadata fora de ordem: o nome da coluna tem que acompanhar o seu "order".
@@ -41,6 +42,31 @@ public class QueryFakeTests : IDisposable
 
         Assert.Equal(0, linha.CodUsu);
         Assert.Equal("SUP", linha.NomeUsu);
+    }
+
+    [Fact]
+    public async Task QueryAsDictionaryAsync_respeita_a_ordem_declarada_no_metadata()
+    {
+        const string desordenado =
+            """[{"name":"NOMEUSU","description":"NOMEUSU","order":2,"userType":"S"},{"name":"CODUSU","description":"CODUSU","order":1,"userType":"I"}]""";
+        _fake.ComQuery(desordenado, """[[0,"SUP"]]""");
+
+        Dictionary<string, object?> linha = (await Usuarios().QueryAsDictionaryAsync("SELECT ...")).Single();
+
+        Assert.Equal("SUP", linha["NOMEUSU"]);
+        Assert.Equal(0L, Convert.ToInt64(linha["CODUSU"]));
+    }
+
+    [Fact]
+    public async Task Coluna_repetida_e_rejeitada_com_mensagem_clara()
+    {
+        const string repetido =
+            """[{"name":"CODUSU","description":"CODUSU","order":1,"userType":"I"},{"name":"CODUSU","description":"CODUSU","order":2,"userType":"I"}]""";
+        _fake.ComQuery(repetido, """[[0,1]]""");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Usuarios().QueryAsDictionaryAsync("SELECT ..."));
+
+        Assert.Contains("CODUSU", ex.Message);
     }
 
     [Fact]
@@ -59,7 +85,7 @@ public class QueryFakeTests : IDisposable
     {
         _fake.ComQueryErro("ORA-00942: table or view does not exist");
 
-        var ex = await Assert.ThrowsAsync<Exception>(() => Usuarios().QueryAsDictionaryAsync("SELECT * FROM NAO_EXISTE"));
+        var ex = await Assert.ThrowsAsync<SankhyaException>(() => Usuarios().QueryAsDictionaryAsync("SELECT * FROM NAO_EXISTE"));
 
         Assert.Contains("ORA-00942", ex.Message);
     }

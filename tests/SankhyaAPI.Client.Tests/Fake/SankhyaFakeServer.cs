@@ -30,10 +30,15 @@ public sealed class SankhyaFakeServer : IDisposable
         ComLogout();
     }
 
-    public SankhyaFakeServer ComLogin(string sessionId = SessionId) =>
+    public SankhyaFakeServer ComLogin(string sessionId = SessionId) => ComLoginIdUsuBruto(Base64("0"), sessionId);
+
+    /// <summary>
+    /// Login com o conteúdo de &lt;idusu&gt; exatamente como informado (vazio, base64 inválido...).
+    /// </summary>
+    public SankhyaFakeServer ComLoginIdUsuBruto(string idusu, string sessionId = SessionId) =>
         Responder("MobileLoginSP.login",
             Xml("MobileLoginSP.login",
-                $"<responseBody><jsessionid>{sessionId}</jsessionid><idusu>{Base64("0")}</idusu><callID>1</callID></responseBody>"));
+                $"<responseBody><jsessionid>{sessionId}</jsessionid><idusu>{idusu}</idusu><callID>1</callID></responseBody>"));
 
     public SankhyaFakeServer ComLogout() =>
         Responder("MobileLoginSP.logout", Xml("MobileLoginSP.logout", "<responseBody />"));
@@ -58,6 +63,15 @@ public sealed class SankhyaFakeServer : IDisposable
 
     public SankhyaFakeServer ComXmlBruto(string serviceName, string responseBody) =>
         Responder(serviceName, Xml(serviceName, responseBody));
+
+    /// <summary>
+    /// Resposta XML com o status e o conteúdo informados, para exercitar combinações de status e mensagem.
+    /// </summary>
+    public SankhyaFakeServer ComStatus(string serviceName, string status, string conteudo = "") =>
+        Responder(serviceName,
+            $"""<?xml version="1.0" encoding="ISO-8859-1"?><serviceResponse serviceName="{serviceName}" status="{status}" pendingPrinting="false">{conteudo}</serviceResponse>""");
+
+    public static string Base64(string texto) => Convert.ToBase64String(Encoding.Latin1.GetBytes(texto));
 
     public SankhyaFakeServer ComErro(string serviceName, string mensagem) =>
         Responder(serviceName,
@@ -101,6 +115,4 @@ public sealed class SankhyaFakeServer : IDisposable
 
     private static string Xml(string serviceName, string responseBody) =>
         $"""<?xml version="1.0" encoding="ISO-8859-1"?><serviceResponse serviceName="{serviceName}" status="1" pendingPrinting="false" transactionId="T1">{responseBody}</serviceResponse>""";
-
-    private static string Base64(string texto) => Convert.ToBase64String(Encoding.Latin1.GetBytes(texto));
 }

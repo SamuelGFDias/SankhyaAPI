@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Roda os testes contra o Sankhya real (Category=Real), lendo URL, usuário e senha do arquivo de
+# Roda os testes contra o Sankhya real (padrão: Category=Real, só leitura; a escrita na AD_TESTE é
+# Category=RealEscrita, e "Category=Real|Category=RealEscrita" roda os dois), lendo URL, usuário e senha do arquivo de
 # credenciais (padrão: ~/.config/sankhyaapi/teste.env, permissão 600). Nada é impresso.
 # Usa o dotnet local; sem ele, roda num container do SDK .NET 8 com podman.
 set -euo pipefail

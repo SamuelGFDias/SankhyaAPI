@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<Title>SankhyaAPI</Title>
 		<Authors>samueldias21</Authors>
-		<Version>5.1.1</Version>
+		<Version>5.2.0</Version>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>

@@ -13,11 +13,13 @@ public static class ObjectUtilsMethods
 {
     #region PublicMethods
 
+    /// <summary>
+    /// Campos pedidos ao Sankhya: as propriedades mapeadas (<c>[XmlElement]</c> ou <c>[Key]</c>), na ordem do modelo.
+    /// A resposta usa essa mesma ordem nos elementos <c>f0, f1, ...</c>.
+    /// </summary>
     public static List<Field> GetFieldsFromObject(object obj)
     {
-        PropertyInfo[] props = PropertiesFromObject(obj);
-
-        return props.Select(t => new Field { Nome = t.GetXmlElementName() }).ToList();
+        return ModelMap.For(obj.GetType()).Mapped.Select(p => new Field { Nome = p.XmlName }).ToList();
     }
 
     public static string GetFormattedString(object value) =>
@@ -96,9 +98,10 @@ public static class ObjectUtilsMethods
 
     public static object? ConvertForPropertyType(string xmlElementValue, PropertyInfo property)
     {
+        Type propertyType = GetPropertyValueType(property.PropertyType);
+
         try
         {
-            Type? propertyType = GetPropertyValueType(property.PropertyType);
 
             if (string.IsNullOrWhiteSpace(xmlElementValue) && propertyType != typeof(bool)) return null;
 
@@ -122,7 +125,7 @@ public static class ObjectUtilsMethods
                     "S" => true,
                     "N" => false,
                     ""  => false,
-                    _   => throw new Exception($"Valor '{xmlElementValue}' não é um boolean válido")
+                    _   => throw new FormatException("Valor não é um boolean válido (esperado S ou N)")
                 },
 
                 // Conversão para String
@@ -145,7 +148,14 @@ public static class ObjectUtilsMethods
             return Activator.CreateInstance(nullableStateType, convertedValue);
         } catch (Exception ex)
         {
-            throw new Exception($"Erro ao converter o valor '{xmlElementValue}' para a propriedade '{property.Name}': {ex.Message}");
+            // O valor pode ser dado pessoal (CPF, nome, endereço) e mensagens de exceção vão para log.
+            // Por isso ele não entra na mensagem nem na InnerException (cujas mensagens costumam repeti-lo):
+            // fica só em Data, para quem quiser registrá-lo conscientemente.
+            var erro = new FormatException(
+                $"Não foi possível converter o valor recebido do Sankhya para a propriedade '{property.Name}' ({propertyType.Name}).");
+            erro.Data["Valor"] = xmlElementValue;
+            erro.Data["TipoDoErroOriginal"] = ex.GetType().FullName;
+            throw erro;
         }
     }
 
@@ -155,29 +165,31 @@ public static class ObjectUtilsMethods
         if (fields.Values.Count == 0) return [];
 
         int maxCount = fields.Values.Max(list => list?.Count ?? 0);
+        ModelMap map = ModelMap.For<T>();
 
-        var objs = new List<T>();
+        // Coluna de cada propriedade resolvida uma vez, não a cada linha.
+        List<(PropertyMap Property, List<object> Values)> colunas = [];
+        foreach (PropertyMap property in map.Mapped)
+        {
+            if (fields.TryGetValue(property.XmlName!, out List<object>? values) && values != null)
+                colunas.Add((property, values));
+        }
+
+        var objs = new List<T>(maxCount);
 
         for (int i = 0; i < maxCount; i++)
         {
             var objectDest = new T();
-            PropertyInfo[] props = PropertiesFromObject(objectDest);
 
-            foreach (PropertyInfo prop in props)
+            foreach ((PropertyMap property, List<object> values) in colunas)
             {
-                KeyValuePair<string, List<dynamic>?> field = fields.FirstOrDefault(a => a.Key == prop.GetXmlElementName());
+                if (values.Count <= i) continue;
 
-                if (field.Value == null || field.Value.Count <= i) continue;
+                object? value = values[i];
+                object? convertedValue = ConvertForPropertyType(Convert.ToString(value, CultureInfo.InvariantCulture) ?? "", property.Property);
 
-                dynamic? value = field.Value[i];
-
-                // Não tirar? do convertedValue
-                // ReSharper disable once ConditionalAccessQualifierIsNonNullableAccordingToAPIContract
-                dynamic? convertedValue = ConvertForPropertyType(value?.ToString() ?? "", prop);
-
-                prop.SetValue(objectDest, convertedValue);
+                property.SetValue(objectDest, convertedValue);
             }
-
 
             objs.Add(objectDest);
         }
@@ -208,40 +220,40 @@ public static class ObjectUtilsMethods
         return xmlElementAttr?.ElementName ?? primaryKeyAttr?.ElementName;
     }
 
+    /// <summary>
+    /// Valida as chaves antes de chamar o servidor.
+    /// <list type="bullet">
+    /// <item><description>Atualização e exclusão: toda chave precisa estar <c>Set</c>.</description></item>
+    /// <item><description>Inserção: chave auto-enumerada não pode estar preenchida; chave sem auto numeração precisa estar <c>Set</c>.</description></item>
+    /// </list>
+    /// </summary>
     public static void ValidarCamposChave<T>(List<T> objs, bool isUpdate = false)
         where T : class, new()
     {
-        List<PropertyInfo> autoEnumerableKeys = GetKeysPropertiesFromObject<T>(true);
-        List<PropertyInfo> keys = GetKeysPropertiesFromObject<T>();
-
-
-        if (!isUpdate ? autoEnumerableKeys is not { Count: > 0 } : keys is not { Count : > 0 }) return;
+        IReadOnlyList<PropertyMap> keys = ModelMap.For<T>().Keys;
+        if (keys.Count == 0) return;
 
         foreach (T item in objs)
         {
-            List<PropertyInfo> propertyKeys = item.GetType()
-                                                  .GetProperties()
-                                                  .Where(!isUpdate ? autoEnumerableKeys.Contains : keys.Contains)
-                                                  .ToList();
-
-            foreach (PropertyInfo property in propertyKeys)
+            foreach (PropertyMap key in keys)
             {
-                object? rawValue = property.GetValue(item);
+                bool isSet = key.GetState(item) == EPropertyState.Set;
+                bool autoEnumerable = key.Key!.AutoEnumerable;
 
-                bool isSet = rawValue is INullableState state ? state.State == EPropertyState.Set : rawValue != null;
+                if (isUpdate && !isSet)
+                    throw new ArgumentNullException(
+                        key.Name,
+                        "Os campos que fazem parte da chave primária não podem estar vazios em operações de atualização.");
 
-                switch (isUpdate)
-                {
-                    case true when !isSet:
-                        throw new ArgumentNullException(
-                            property.Name,
-                            "Os campos que fazem parte da chave primária não podem estar vazios em operações de atualização.");
+                if (!isUpdate && autoEnumerable && isSet)
+                    throw new ArgumentException(
+                        "Os campos que fazem parte da chave primária com atributos auto enumerados não podem estar preenchidos em operações de inserção.",
+                        key.Name);
 
-                    case false when isSet:
-                        throw new ArgumentException(
-                            "Os campos que fazem parte da chave primária com atributos auto enumerados não podem estar preenchidos em operações de inserção.",
-                            property.Name);
-                }
+                if (!isUpdate && !autoEnumerable && !isSet)
+                    throw new ArgumentException(
+                        "Os campos que fazem parte da chave primária sem auto numeração precisam estar preenchidos em operações de inserção.",
+                        key.Name);
             }
         }
     }
@@ -288,20 +300,14 @@ public static class ObjectUtilsMethods
 
     public static void AddKeysAsXml<T>(this XElement element, T obj)
     {
-        if (obj == null) throw new Exception("A entidade deve ser definida");
+        if (obj == null) throw new ArgumentNullException(nameof(obj), "A entidade deve ser definida");
 
-        foreach (PropertyInfo? prop in obj.GetType().GetProperties())
+        foreach (PropertyMap key in ModelMap.For(obj.GetType()).Keys)
         {
-            var keyAttribute = prop.GetCustomAttribute<KeyAttribute>();
-            if (keyAttribute == null) continue;
+            if (key.GetValue(obj) == null)
+                throw new ArgumentNullException(key.Name, $"Chave primária {key.Key!.ElementName} não pode ser nula");
 
-            object? value = prop.GetValue(obj);
-
-            if (value == null) throw new Exception($"Chave primária {keyAttribute.ElementName} não pode ser nula");
-
-            string? convertedValue = obj.GetFormattedString(prop);
-
-            element.Add(new XElement(keyAttribute.ElementName, convertedValue));
+            element.Add(new XElement(key.Key!.ElementName, obj.GetFormattedString(key.Property)));
         }
     }
 
@@ -310,40 +316,17 @@ public static class ObjectUtilsMethods
     {
         var localFields = new XElement("localFields");
 
-        foreach (PropertyInfo? prop in obj.GetType().GetProperties())
+        foreach (PropertyMap property in ModelMap.For(obj.GetType()).Mapped)
         {
-            var keyAttribute = prop.GetCustomAttribute<KeyAttribute>();
-            if (keyAttribute != null)
-            {
-                if (isUpdate || keyAttribute.AutoEnumerable) continue;
-            }
+            if (property.Key != null && (isUpdate || property.Key.AutoEnumerable)) continue;
 
-            string? xmlElementName = prop.GetXmlElementName();
-            if (xmlElementName == null) continue;
+            string xmlElementName = property.XmlName!;
 
-            object? propertyValue = prop.GetValue(obj);
-
-            bool isNullableState = prop.PropertyType.IsGenericType
-                                && prop.PropertyType.GetGenericTypeDefinition() == typeof(NullableState<>);
-
-            EPropertyState? state = null;
-            bool isClear = false;
-            bool isUnSet = false;
-
-            if (isNullableState && propertyValue != null)
-            {
-                var stateProperty = propertyValue.GetType().GetProperty(nameof(NullableState<int>.State));
-                if (stateProperty != null)
-                {
-                    object? stateValue = stateProperty.GetValue(propertyValue);
-                    if (stateValue is EPropertyState stateEnum)
-                    {
-                        state = stateEnum;
-                        isClear = stateEnum == EPropertyState.Clear;
-                        isUnSet = stateEnum == EPropertyState.UnSet;
-                    }
-                }
-            }
+            EPropertyState? state = property.IsNullableState && property.GetValue(obj) is INullableState nullableState
+                                        ? nullableState.State
+                                        : null;
+            bool isClear = state == EPropertyState.Clear;
+            bool isUnSet = state == EPropertyState.UnSet;
 
             switch (isUpdate)
             {
@@ -352,7 +335,7 @@ public static class ObjectUtilsMethods
                     continue;
             }
 
-            string? convertedValue = obj.GetFormattedString(prop);
+            string? convertedValue = obj.GetFormattedString(property.Property);
 
             if (convertedValue != null || (isUpdate && isClear))
             {
@@ -382,44 +365,22 @@ public static class ObjectUtilsMethods
             ? dateTime
             : DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out dateTime)
                 ? dateTime
-                : throw new Exception($"Valor '{value}' não é uma data válida");
+                : throw new FormatException("Valor não é uma data válida");
 
     private static DateOnly ParseDateOnly(string value) =>
         DateOnly.TryParseExact(value, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly date)
             ? date
             : DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out date)
                 ? date
-                : throw new Exception($"Valor '{value}' não é uma data válida");
+                : throw new FormatException("Valor não é uma data válida");
 
     private static TimeOnly ParseTimeOnly(string value) =>
         TimeOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out TimeOnly time)
             ? time
             : TimeOnly.TryParseExact(value.PadLeft(4, '0'), "HHmm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time)
                 ? time
-                : throw new Exception($"Valor '{value}' não é uma hora válida");
+                : throw new FormatException("Valor não é uma hora válida");
 
-
-    private static PropertyInfo[] PropertiesFromObject(object obj)
-    {
-        return obj.GetType().GetProperties();
-    }
-
-
-    private static List<PropertyInfo> GetKeysPropertiesFromObject<T>(bool isAutoEnumerable = false)
-        where T : class, new()
-    {
-        var obj = new T();
-        PropertyInfo[] properties = obj.GetType().GetProperties();
-
-        if (isAutoEnumerable)
-            return properties.Where(
-                                  p => isAutoEnumerable
-                                           ? p.GetPrimaryKeyAttribute() is { AutoEnumerable: true }
-                                           : p.GetPrimaryKeyAttribute() != null)
-                             .ToList();
-
-        return properties.Where(p => p.GetPrimaryKeyAttribute() != null).ToList();
-    }
 
     private static KeyAttribute? GetPrimaryKeyAttribute(this PropertyInfo prop) => prop.GetCustomAttribute<KeyAttribute>();
 
