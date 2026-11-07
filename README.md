@@ -150,5 +150,36 @@ Esta biblioteca permite realizar operações de CRUD (Criar, Ler, Atualizar e Ex
 
 
 
+## 🔎 Filtros com parâmetros, paginação e erros
+
+**Nunca concatene valores vindos do usuário na expressão ou no SQL.** Use `?` no lugar de cada valor e passe os valores em ordem. Eles vão separados da expressão (`<parameter>`), então não viram SQL:
+
+```c#
+using SankhyaAPI.Client.Envelopes;
+
+List<ProdutoEntity> produtos = await produtoService.FindAsync(
+    "this.DESCRPROD LIKE ? AND this.CODGRUPOPROD = ?",
+    [Parameter.Texto(busca + "%"), Parameter.Inteiro(codGrupo)],
+    orderBy: "this.CODPROD");
+```
+
+Fábricas disponíveis: `Parameter.Texto`, `Parameter.Inteiro`, `Parameter.Decimal`, `Parameter.Data` (`DateOnly`) e `Parameter.DataHora` (`DateTime`).
+
+Para paginar (o Sankhya devolve até 50 registros por página), use `FindPageAsync` com uma ordenação estável:
+
+```c#
+int pagina = 0;
+SankhyaPage<ProdutoEntity> resultado;
+do
+{
+    resultado = await produtoService.FindPageAsync("this.ATIVO = ?", [Parameter.Texto("S")], pagina++, "this.CODPROD");
+    Processar(resultado.Items);
+} while (resultado.HasMoreResult);
+```
+
+`QueryRawAsync` e `QueryAsDictionaryAsync` executam o SQL como está, com o poder do usuário de integração. Use só com SQL fixo, escrito por você.
+
+**Erros.** Quando o Sankhya responde com erro, o pacote lança `SankhyaException` (namespace `SankhyaAPI.Client.Exceptions`), com `Status`, `ServiceName`, `TsErrorCode` e a mensagem do servidor já decodificada. Sessão inválida ou expirada (`status="3"`) lança `SankhyaSessionExpiredException`. As duas herdam de `Exception`. Falhas de transporte (HTTP 4xx/5xx, corpo vazio) lançam `HttpRequestException`. Erros de conversão de campo lançam `FormatException` sem o valor na mensagem: o valor fica só em `exception.Data["Valor"]`, para não ir para o log sem querer.
+
 ## Licença
 Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE.txt) para mais detalhes.
