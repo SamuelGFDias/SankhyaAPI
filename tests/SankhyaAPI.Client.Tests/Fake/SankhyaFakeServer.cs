@@ -77,9 +77,9 @@ public sealed class SankhyaFakeServer : IDisposable
         Responder(serviceName,
             $"""<?xml version="1.0" encoding="ISO-8859-1"?><serviceResponse serviceName="{serviceName}" status="0" pendingPrinting="false"><statusMessage><![CDATA[{Base64(mensagem)}]]></statusMessage></serviceResponse>""");
 
-    public SankhyaFakeServer ComQuery(string fieldsMetadataJson, string rowsJson) =>
+    public SankhyaFakeServer ComQuery(string fieldsMetadataJson, string rowsJson, bool burstLimit = false) =>
         Responder("DbExplorerSP.executeQuery",
-            $$$"""{"serviceName":"DbExplorerSP.executeQuery","status":"1","pendingPrinting":"false","responseBody":{"fieldsMetadata":{{{fieldsMetadataJson}}},"rows":{{{rowsJson}}},"burstLimit":false}}""",
+            $$$"""{"serviceName":"DbExplorerSP.executeQuery","status":"1","pendingPrinting":"false","responseBody":{"fieldsMetadata":{{{fieldsMetadataJson}}},"rows":{{{rowsJson}}},"burstLimit":{{{(burstLimit ? "true" : "false")}}}}}""",
             "application/json");
 
     public SankhyaFakeServer ComQueryErro(string mensagem) =>

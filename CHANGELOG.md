@@ -19,6 +19,7 @@ Correções da auditoria (entrega A de `docs/plano-correcao.md`). Nenhuma assina
 - A leitura de `<entities>` mapeia cada coluna pelo nome (pela `<metadata>` da resposta ou pelos campos pedidos). Um campo omitido ou fora de ordem não desalinha mais os seguintes, e a leitura para em `</entities>` (#6).
 - Um `idusu` vazio ou inválido no login não lança mais `FormatException` (#14).
 - O XML enviado declara `charset=UTF-8`, que é a codificação real do corpo. Antes, loadRecords e removeRecord declaravam ISO-8859-1. A homologação lê o corpo como UTF-8 nos dois casos, então não havia corrupção ali (#15).
+- ⚠ `QueryRawAsync` e `QueryAsDictionaryAsync` lançam `SankhyaException` quando o servidor corta o resultado no limite de 5000 linhas do executeQuery (`burstLimit`). Antes, as 5000 linhas eram devolvidas como se fossem o resultado inteiro. Para mais linhas, pagine com `ORDER BY ... OFFSET ... FETCH NEXT ...` ou use `FindPageAsync`. O loadRecords (`FindAsync`) não tem esse limite.
 - O executeQuery pede `outputType=json`. Antes, com SQL inválido, o servidor respondia em XML e a mensagem do erro se perdia num `HttpRequestException`.
 - Reflexão em cache por tipo (`ModelMap`), sem `dynamic` e sem busca linear por campo a cada linha (primeira parte do #17).
 

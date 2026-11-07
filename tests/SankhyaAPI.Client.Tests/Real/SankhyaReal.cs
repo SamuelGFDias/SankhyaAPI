@@ -52,3 +52,15 @@ public sealed class RealFactAttribute : FactAttribute
             Skip = $"Sankhya real não configurado (defina SANKHYA_BASE_URL/SANKHYA_USER/SANKHYA_PASSWORD ou o arquivo {SankhyaReal.CaminhoArquivo}).";
     }
 }
+
+/// <summary>
+/// Theory que só roda quando há um Sankhya real configurado.
+/// </summary>
+public sealed class RealTheoryAttribute : TheoryAttribute
+{
+    public RealTheoryAttribute()
+    {
+        if (!SankhyaReal.Configurado)
+            Skip = $"Sankhya real não configurado (defina SANKHYA_BASE_URL/SANKHYA_USER/SANKHYA_PASSWORD ou o arquivo {SankhyaReal.CaminhoArquivo}).";
+    }
+}
