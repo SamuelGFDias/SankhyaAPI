@@ -36,6 +36,17 @@ A proposta resolve, por construção, os achados dos testes reais e da auditoria
 | F17 | Campos de apresentação (por exemplo `GrupoUsuario_NOMEGRUPO`) | `includePresentationFields="S"` + mapeamento por nome | campo só de leitura no mapa: `Apresentacao(x => x.NomeGrupo, "GrupoUsuario_NOMEGRUPO")` |
 | F18 | Modelos 5.x com atributos | `[Key]`, `[XmlElement]`, `SankhyaModelBase` | continuam funcionando: o adaptador de atributos gera o mesmo mapa (seção 8) |
 
+**Superfície de baixo nível pública hoje.** Cada grupo tem um destino:
+
+| Grupo | Hoje | Na 6.0 | Por quê |
+|---|---|---|---|
+| Membros `protected` de `SessionService` (`LoadRequest`, `UpdateRequest`, `CreateRequest`, `DeleteRequest`, `Query`, `JSessionId`, `SessionIdAtual`) | base para serviços próprios que herdam de `SessionService` | mantidos na fachada `[Obsolete]`. O substituto é injetar `ISankhyaRepositorio<T>`, `ISankhyaSql` ou `ISankhyaSession` em vez de herdar | herança como extensão amarra o consumidor aos detalhes internos |
+| `ISankhyaServiceClient`, `SankhyaApiClientFactory`, `DefaultClientService` | cliente Refit exposto | internos. Quem precisa de chamada livre ganha `ISankhyaTransport.EnviarAsync(servico, corpoXml)` | sai o Refit (5.1); a chamada livre continua possível sem expor o Refit |
+| `LoadRecordsGeneric`, `SaveRecordsGeneric`, `RemoveRecordsGeneric`, `ExecuteQueryGeneric`, `EServiceNames`, classes de envelope (`ServiceRequest`, `ServiceResponse`, `DataSet`, `DataRow`, `Criteria`, `ResponseBody`, `Entities`...) | montagem de envelope à mão | internas. A montagem de envelope fica coberta pelo transporte | são detalhe de protocolo; mantê-las públicas congelaria o formato do XML |
+| `Parameter` | parâmetro de criteria | mantido (com as fábricas da 5.2) | já é API de uso |
+| Helpers públicos de `ObjectUtilsMethods` (`GetFormattedString`, `ConvertForPropertyType`, `GetXmlEnumValue`, `GetEnumValueFromXml`...) | conversão por reflexão | substituídos pelos conversores `SankhyaTipo` (públicos e extensíveis); os antigos ficam `[Obsolete]` | mesma função, sem reflexão |
+| `LoginEntity`, `ResponseEntity` | retorno do login | `SessaoSankhya` (id da sessão, usuário, horário) | o `LoginEntity` guarda o código do usuário num membro privado inacessível |
+
 Também saem da 5.2 sem substituto direto, porque estão quebrados ou sem uso (#7, #19): `AddSankhyaClient` atual, `XmlSerialable`, `IProxysable`, `SankhyaObjectKey`, `IModelBase` e as extensões de serialização genéricas (`SerializerServiceExtension`). O guia de migração explica o que usar no lugar.
 
 ## 3. Achados que a arquitetura precisa resolver
@@ -81,7 +92,7 @@ São quatro camadas, cada uma testável sozinha. O `SankhyaFakeServer` dos teste
 - **Sai o Refit.** São sete endpoints fixos. O Refit.Xml está desalinhado (#18), usa `XmlSerializer` por reflexão (o que impede AOT) e já causou o problema de charset. Os envelopes passam a ser escritos e lidos à mão com `XmlWriter`/`XmlReader`, e o JSON do executeQuery usa `JsonSerializerContext` (source generation do System.Text.Json).
 - **Resiliência.** `Microsoft.Extensions.Http.Resilience` com nova tentativa só para falha transitória de transporte (5xx, timeout) e só em operações idempotentes (loadRecords, executeQuery, login). Insert e update não são repetidos automaticamente por falha de transporte, porque o servidor pode ter gravado.
 - **Sessão.** `ISankhyaSession` tem dois modos:
-  - `Compartilhada` (**padrão**, decisão de 2026-11-07): login sob demanda, protegido por `SemaphoreSlim` para que chamadas concorrentes façam um login só. Ao receber `SankhyaSessionExpiredException` (`status="3"`), renova a sessão e repete a operação **uma vez**. Repetir também o insert é seguro nesse caso, porque o `status="3"` vem antes de executar qualquer coisa: é a autenticação recusada. Logout no `DisposeAsync`. O registro no DI é singleton.
+  - `Compartilhada` (**padrão**, decisão de 2026-11-07): login sob demanda, protegido por `SemaphoreSlim` para que chamadas concorrentes façam um login só. Ao receber `SankhyaSessionExpiredException` (`status="3"`), renova a sessão e repete a operação **uma vez**. Repetir também a escrita é seguro nesse caso, e isso foi verificado na homologação: saveRecord e removeRecord com sessão expirada voltam `status="3"` sem gravar nem apagar nada. Logout no `DisposeAsync`. O registro no DI é singleton.
   - `PorOperacao`: o comportamento da 5.x (login e logout a cada operação), para quem precisa de isolamento total ou roda em job esporádico.
 - **Login explícito (F1).** `await using var sessao = await sankhya.AbrirSessaoAsync();` serve para fluxos que precisam da mesma sessão em várias chamadas, como gerar relatório e baixar.
 
@@ -186,11 +197,11 @@ List<Linha> linhas = await sql.ConsultarAsync<Linha>($"SELECT CODPARC, NOMEPARC 
 - Tipo desconhecido é erro.
 - `string` concatenada à mão no lugar do `SankhyaSql` gera aviso de analisador.
 - **Risco:** escapar não é a mesma coisa que parametrizar. O escape cobre o SQL Server e o Oracle no que é padrão (`'` dobrado), mas o pacote passa a precisar saber o dialeto (`SankhyaClientOptions.Dialeto`, detectável no login). Por isso o caminho recomendado para filtrar por entrada do usuário continua sendo o loadRecords parametrizado.
-- **Corte de 5000:** `SankhyaResultadoCortadoException` (subtipo de `SankhyaException`). `ConsultarPaginadoAsync(sql, ordenarPor, tamanho)` embrulha a consulta em `SELECT * FROM (...) q ORDER BY ... OFFSET n ROWS FETCH NEXT m ROWS ONLY` (no Oracle, `OFFSET ... FETCH` desde a 12c) e devolve `IAsyncEnumerable`. A ordenação é obrigatória, para a paginação não repetir nem pular linhas. O teste real com `OFFSET 5000` em TSICID já mostrou que funciona na homologação.
+- **Corte de 5000:** `SankhyaResultadoCortadoException` (subtipo de `SankhyaException`). `ConsultarPaginadoAsync(sql, ordenarPor, tamanho)` embrulha a consulta em `SELECT * FROM (...) q ORDER BY ... OFFSET n ROWS FETCH NEXT m ROWS ONLY` (no Oracle, `OFFSET ... FETCH` desde a 12c) e devolve `IAsyncEnumerable`. A ordenação é obrigatória, para a paginação não repetir nem pular linhas. Verificado na homologação: a forma embrulhada funciona, mas o SQL Server **recusa `ORDER BY` no SQL interno**. A regra fica assim: o SQL passado ao `ConsultarPaginadoAsync` não pode ter `ORDER BY`, a ordenação vai em `ordenarPor`, e o pacote rejeita antes de enviar quando encontrar `ORDER BY` fora de parênteses.
 
 ### 5.7 Relatórios
 
-`GerarRelatorioAsync(int codigo, IEnumerable<ParametroRelatorio> parametros, CancellationToken)` abre a sessão, gera, baixa o arquivo para um `Stream` próprio e fecha a sessão no `finally` (#11). Os dois métodos atuais ficam como `[Obsolete]` na 6.0.
+`GerarRelatorioAsync(int codigo, IEnumerable<ParametroRelatorio> parametros, CancellationToken)` abre a sessão, gera, baixa o arquivo para um `Stream` próprio e fecha a sessão no `finally` (#11). Devolve um `SankhyaArquivoRelatorio` com o `Stream` e os metadados que o Sankhya manda na `<chave>`: `ContentType`, `Formato`, `PermiteExportar`, `PodeEnviarPorEmail`. Os dois métodos atuais ficam como `[Obsolete]` na 6.0.
 
 ### 5.8 Configuração e DI
 
@@ -253,6 +264,7 @@ Diagnósticos:
 |---|---|---|---|
 | Reescrita do transporte (sem Refit) quebra algo que a 5.x fazia | média | alto | paridade de envelope byte a byte contra a 5.2 na suíte fake, mais os testes reais |
 | Campo calculado com ida e volta inconsistente | média | médio | teste automático de ida e volta por mapa e SNK004 |
+| SQL do usuário com `ORDER BY` em `ConsultarPaginadoAsync` (recusado pelo SQL Server dentro da subconsulta) | alta | baixo | validação antes de enviar, mensagem dizendo para usar `ordenarPor` |
 | Escape de SQL não cobre um caso do dialeto | baixa | alto | lista branca de tipos, testes de injeção reais nos dois dialetos e documentação apontando o loadRecords parametrizado como caminho seguro |
 | Sessão compartilhada: um logout ou expiração no meio de várias chamadas | média | médio | renovação sob semáforo e uma única repetição; teste concorrente real |
 | Streaming de muitas páginas com dado mudando no meio | média | baixo | ordenação estável obrigatória; documentar que não é snapshot |
@@ -284,3 +296,6 @@ Issues: P1 fecha #7, #8, #9, #10 e #11. P2 fecha #16 (com o `NullableState` imut
 3. **`SankhyaSql` com escape** (recomendado: sim, com aviso de que o loadRecords parametrizado é o caminho seguro) ou proibir valores no SQL cru.
 4. **Target frameworks:** `net8.0` só, ou `net8.0` + `net10.0` (LTS).
 5. **Fachada 5.x até a 7.0** (recomendado) ou quebra direta na 6.0.
+6. **Nomes da API nova:** este documento usa nomes em português (`InserirAsync`, `Consultar`, `AtualizarAsync`) por coerência com o domínio Sankhya, mas a 5.x usa inglês (`FindAsync`, `CreateAsync`). As alternativas são português, inglês (`InsertAsync`, `Query`, `UpdateAsync`) ou manter os nomes da 5.x onde a operação é a mesma. Os exemplos acima são só ilustrativos até essa decisão.
+
+Verificado só no fake, a confirmar na P2: chave composta com um campo auto-numerado. Os testes `ChaveCompostaFakeTests` cobrem insert, update e delete, mas falta uma tabela real com chave composta para o teste de homologação.
