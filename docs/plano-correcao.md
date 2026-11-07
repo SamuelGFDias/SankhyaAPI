@@ -39,6 +39,8 @@ Pendência de A10 e de todo teste real de escrita: falta escolher uma entidade s
 
 ---
 
+> **Entregas B e C substituídas por [`proposta-6.0.md`](proposta-6.0.md)** (2026-11-07): mapa fluente por modelo como caminho principal, domínio sem anotações, atributos como compatibilidade e generator só para AOT. O texto abaixo fica como histórico do desenho anterior.
+
 ## Entrega B — 6.0.0-preview.1 (infraestrutura)
 
 | # | Item | Como | Teste | Tamanho |
@@ -150,9 +152,12 @@ Tomadas em 2026-11-07:
 2. **Generator opcional**, com a reflexão em cache como fallback (C1 como descrito).
 3. **Modo de sessão padrão na 6.0: `Compartilhada`.** Isso contraria a recomendação inicial (`PorOperacao`). O B4 passa a ter o modo compartilhado como padrão, e o guia de migração precisa avisar da mudança de comportamento (uma sessão por instância, renovada ao receber `SankhyaSessionExpiredException`).
 
+4. **Mapeamento na 6.0: mapa fluente por modelo** (classe de configuração no estilo `IEntityTypeConfiguration<T>`), com o domínio livre de anotações e campos calculados (um campo do domínio em várias colunas). Os atributos ficam como compatibilidade. Detalhado em `proposta-6.0.md`.
+5. **Corte de 5000 linhas do executeQuery:** lançar exceção em vez de devolver o resultado cortado (feito na 5.2.0).
+
 Ainda aberta:
 
-4. **Target frameworks na 6.0:** só `net8.0`, ou `net8.0` + `net9.0`/`net10.0`. `netstandard2.0` não é recomendado, porque perde `DateOnly`/`TimeOnly`, `static abstract` e `ModuleInitializer`.
+6. **Target frameworks na 6.0:** só `net8.0`, ou `net8.0` + `net9.0`/`net10.0`. `netstandard2.0` não é recomendado, porque perde `DateOnly`/`TimeOnly`, `static abstract` e `ModuleInitializer`.
 
 ## Constatado na homologação (entrega A)
 
