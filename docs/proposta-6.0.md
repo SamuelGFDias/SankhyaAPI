@@ -182,6 +182,22 @@ ItemNota? um = await itens.ObterAsync(new { NumeroNota = 500L, Sequencia = 3 }, 
 - `OrdenarPor(x => x.Campo)` usa o nome da coluna do mapa e vai no atributo `orderByExpression` do `<dataSet>`, separado do `<criteria>`, como na 5.2. A ordenação deixa de ser string livre e não aceita entrada do usuário. A restrição de `ORDER BY` da seção 5.6 vale só para o SQL cru do executeQuery, que não tem esse campo separado.
 - **Fase posterior, opcional:** um tradutor de expressões só para comparações simples (`Onde(x => x.Quantidade > q && x.Status == StatusItem.Aberto)`). Tradutor de LINQ completo fica fora: o custo é alto e o ganho é pequeno sobre a forma parametrizada.
 
+### 5.5.1 Recursos do loadRecords a expor
+
+A [documentação oficial do loadRecords](https://developer.sankhya.com.br/reference/get_loadrecords) traz atributos do `<dataSet>` que a 5.x não expõe. Eles entram na API de consulta da P3, cada um com teste real:
+
+| Atributo | Para que serve | Na API |
+|---|---|---|
+| `orderByExpression` | ordenação, separada do `<criteria>` (já usada na 5.2 e testada) | `OrdenarPor(...)` |
+| `offsetPage` + `hasMoreResult` | paginação de 50 em 50 (já na 5.2) | `PaginaAsync`/`StreamAsync` |
+| `useFileBasedPagination` | paginação em disco no servidor, indicada para volume grande (mais de 1000 páginas) | `StreamAsync(new() { PaginacaoEmDisco = true })`, ligada automaticamente no `StreamAsync` sem limite |
+| `modifiedSince` | só registros alterados desde a data (depende do log de alterações de tabelas do Sankhya estar ativo) | `AlteradosDesde(DateTime)`: sincronização incremental |
+| `ignoreCalculatedFields` | ignora campos calculados (mais rápido) | `IgnorarCamposCalculados()` |
+| `tryJoinedFields` e `entity` com `path` | campos de entidades ligadas (por exemplo `Cidade`, `GrupoProduto`) | `Apresentacao(x => x.NomeCidade, "Cidade", "NOMECID")` no mapa |
+| `includePresentationFields` | campos de apresentação | ligado quando o mapa tem campo de apresentação |
+
+`useFileBasedPagination`, `modifiedSince` e `tryJoinedFields` ainda não foram sondados na homologação. A P3 começa por eles.
+
 ### 5.6 SQL cru (executeQuery)
 
 O executeQuery não tem parâmetros. A proposta é um handler de string interpolada:
@@ -197,6 +213,11 @@ List<Linha> linhas = await sql.ConsultarAsync<Linha>($"SELECT CODPARC, NOMEPARC 
 - Tipo desconhecido é erro.
 - `string` concatenada à mão no lugar do `SankhyaSql` gera aviso de analisador.
 - **Risco:** escapar não é a mesma coisa que parametrizar. O escape cobre o SQL Server e o Oracle no que é padrão (`'` dobrado), mas o pacote passa a precisar saber o dialeto (`SankhyaClientOptions.Dialeto`, detectável no login). Por isso o caminho recomendado para filtrar por entrada do usuário continua sendo o loadRecords parametrizado.
+- **O que o executeQuery aceita no envelope** (sondado na homologação; a documentação oficial não descreve o serviço):
+  - não há campo de ordenação nem de paginação: `orderBy`, `orderByExpression`, `offset`, `offsetPage`, `page`, `pageSize`, `limit` e `rowsLimit` são ignorados;
+  - `maxRows` existe, mas só **reduz** o limite (`maxRows: 10` traz 10 linhas). Valores acima de 5000 continuam cortando em 5000, então 5000 é um teto fixo do servidor;
+  - com `maxRows` o servidor **não** marca `burstLimit`, mesmo havendo mais linhas. Para saber se há mais, o pacote pede `maxRows = n + 1` e descarta a última linha;
+  - a ordenação do SQL cru, portanto, só existe dentro do próprio SQL.
 - **Corte de 5000:** `SankhyaResultadoCortadoException` (subtipo de `SankhyaException`). `ConsultarPaginadoAsync(sql, ordenarPor, tamanho)` embrulha a consulta em `SELECT * FROM (...) q ORDER BY ... OFFSET n ROWS FETCH NEXT m ROWS ONLY` (no Oracle, `OFFSET ... FETCH` desde a 12c) e devolve `IAsyncEnumerable`. A ordenação é obrigatória, para a paginação não repetir nem pular linhas. Verificado na homologação: a forma embrulhada funciona, mas o SQL Server **recusa `ORDER BY` no SQL interno**. A regra fica assim: o SQL passado ao `ConsultarPaginadoAsync` não pode ter `ORDER BY`, a ordenação vai em `ordenarPor`, e o pacote rejeita antes de enviar quando encontrar `ORDER BY` fora de parênteses.
 
 ### 5.7 Relatórios
