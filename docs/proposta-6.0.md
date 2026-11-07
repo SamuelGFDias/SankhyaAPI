@@ -179,7 +179,7 @@ ItemNota? um = await itens.ObterAsync(new { NumeroNota = 500L, Sequencia = 3 }, 
 ```
 
 - Os valores de `Onde(expr, params object[])` viram `<parameter>`, com o tipo inferido (S/I/F/D/H). A injeção pelo criteria já foi testada: valores com SQL e com XML viram texto e nada é apagado.
-- `OrdenarPor(x => x.Campo)` usa o nome da coluna do mapa, então a ordenação deixa de ser string livre e não aceita entrada do usuário.
+- `OrdenarPor(x => x.Campo)` usa o nome da coluna do mapa e vai no atributo `orderByExpression` do `<dataSet>`, separado do `<criteria>`, como na 5.2. A ordenação deixa de ser string livre e não aceita entrada do usuário. A restrição de `ORDER BY` da seção 5.6 vale só para o SQL cru do executeQuery, que não tem esse campo separado.
 - **Fase posterior, opcional:** um tradutor de expressões só para comparações simples (`Onde(x => x.Quantidade > q && x.Status == StatusItem.Aberto)`). Tradutor de LINQ completo fica fora: o custo é alto e o ganho é pequeno sobre a forma parametrizada.
 
 ### 5.6 SQL cru (executeQuery)
