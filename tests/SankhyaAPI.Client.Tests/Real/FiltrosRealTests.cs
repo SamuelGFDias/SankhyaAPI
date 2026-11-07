@@ -216,13 +216,31 @@ public class LimitesRealTests
     }
 
     /// <summary>
-    /// O executeQuery corta em 5000 linhas e marca burstLimit. Este teste documenta o corte.
+    /// O executeQuery corta em 5000 linhas e marca burstLimit: o pacote lança em vez de devolver o resultado cortado.
     /// </summary>
     [RealFact]
-    public async Task QueryRawAsync_e_cortado_em_5000_linhas_pelo_servidor()
+    public async Task QueryRawAsync_acima_de_5000_linhas_lanca_em_vez_de_cortar()
     {
-        List<CidadeLinha> linhas = await Cidades().QueryRawAsync<CidadeLinha>("SELECT CODCID FROM TSICID");
+        var ex = await Assert.ThrowsAsync<SankhyaAPI.Client.Exceptions.SankhyaException>(
+            () => Cidades().QueryRawAsync<CidadeLinha>("SELECT CODCID FROM TSICID"));
+
+        Assert.Contains("5000", ex.Message);
+    }
+
+    [RealFact]
+    public async Task QueryRawAsync_com_ate_5000_linhas_vem_inteiro()
+    {
+        List<CidadeLinha> linhas = await Cidades().QueryRawAsync<CidadeLinha>("SELECT TOP 5000 CODCID FROM TSICID ORDER BY CODCID");
 
         Assert.Equal(5000, linhas.Count);
+    }
+
+    [RealFact]
+    public async Task QueryRawAsync_paginado_com_OFFSET_traz_o_resto()
+    {
+        List<CidadeLinha> linhas = await Cidades().QueryRawAsync<CidadeLinha>(
+            "SELECT CODCID FROM TSICID ORDER BY CODCID OFFSET 5000 ROWS FETCH NEXT 5000 ROWS ONLY");
+
+        Assert.NotEmpty(linhas);
     }
 }

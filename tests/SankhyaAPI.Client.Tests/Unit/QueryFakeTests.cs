@@ -81,6 +81,17 @@ public class QueryFakeTests : IDisposable
     }
 
     [Fact]
+    public async Task Resultado_cortado_no_limite_do_servidor_lanca_em_vez_de_vir_incompleto()
+    {
+        _fake.ComQuery(Metadata, """[[0,"SUP"]]""", burstLimit: true);
+
+        var ex = await Assert.ThrowsAsync<SankhyaException>(() => Usuarios().QueryRawAsync<UsuarioLinha>("SELECT ..."));
+
+        Assert.Contains("5000", ex.Message);
+        await Assert.ThrowsAsync<SankhyaException>(() => Usuarios().QueryAsDictionaryAsync("SELECT ..."));
+    }
+
+    [Fact]
     public async Task Erro_de_SQL_mostra_a_mensagem_do_servidor()
     {
         _fake.ComQueryErro("ORA-00942: table or view does not exist");

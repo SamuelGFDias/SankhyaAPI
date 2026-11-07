@@ -173,7 +173,7 @@ public class SessionService(string baseUrl, string userName, string password) : 
     /// <typeparam name="T">O tipo que representa a estrutura dos dados retornados pela consulta.</typeparam>
     /// <param name="script">O script SQL que será executado como consulta.</param>
     /// <returns>Uma tarefa que representa a operação assíncrona. O resultado da tarefa contém o corpo da resposta com os dados recuperados da consulta encapsulados em um objeto <see cref="ResponseBody{T}"/>.</returns>
-    /// <exception cref="SankhyaException">Lançada quando o Sankhya recusa a consulta ou não devolve o resultado.</exception>
+    /// <exception cref="SankhyaException">Lançada quando o Sankhya recusa a consulta, não devolve o resultado ou o corta no limite de 5000 linhas.</exception>
     private async Task<ResponseBody<T>> ExecuteQuery<T>(string script)
         where T : class, new()
     {
@@ -183,6 +183,15 @@ public class SessionService(string baseUrl, string userName, string password) : 
         {
             throw new SankhyaException(
                 "Erro de sintaxe na consulta. Confira o script SQL passado como parâmetro.",
+                response.Status,
+                response.ServiceName);
+        }
+
+        if (response.ResponseBody.BurstLimit == true)
+        {
+            throw new SankhyaException(
+                "O Sankhya cortou o resultado da consulta no limite de linhas do executeQuery (5000). "
+              + "Pagine a consulta (ORDER BY ... OFFSET ... FETCH NEXT ...) ou use FindPageAsync.",
                 response.Status,
                 response.ServiceName);
         }

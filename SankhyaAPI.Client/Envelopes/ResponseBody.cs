@@ -33,6 +33,13 @@ public class ResponseBody<TEntity> where TEntity : class
     [JsonPropertyName("rows")]
     public List<List<object>>? Rows { get; set; }
 
+    /// <summary>
+    /// O executeQuery cortou o resultado (limite de 5000 linhas do servidor).
+    /// </summary>
+    [XmlIgnore]
+    [JsonPropertyName("burstLimit")]
+    public bool? BurstLimit { get; set; }
+
     [JsonPropertyName("chave")]
     [XmlElement(ElementName = "chave")]
     public Chave? Chave { get; set; }

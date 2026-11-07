@@ -127,6 +127,8 @@ public abstract class BaseService<T>(string baseUrl, string userName, string pas
     /// O SQL vai para o servidor como está, com o poder do usuário de integração. Nunca concatene nele valores
     /// vindos do usuário: para filtrar entidades com valores externos, use
     /// <see cref="FindAsync(string, IEnumerable{Parameter}, string?)"/>.
+    /// O servidor devolve no máximo 5000 linhas; acima disso lança <see cref="Exceptions.SankhyaException"/>
+    /// em vez de entregar o resultado cortado.
     /// </remarks>
     /// <param name="script">O comando SQL bruto a ser executado.</param>
     /// <returns>Retorna uma lista de objetos do tipo <typeparamref name="TQuery"/> contendo os resultados da consulta.</returns>
@@ -141,6 +143,7 @@ public abstract class BaseService<T>(string baseUrl, string userName, string pas
     /// </summary>
     /// <remarks>
     /// O SQL vai para o servidor como está. Nunca concatene nele valores vindos do usuário.
+    /// Acima de 5000 linhas lança <see cref="Exceptions.SankhyaException"/> em vez de entregar o resultado cortado.
     /// </remarks>
     /// <param name="script">O script de consulta em formato SQL-like a ser executado.</param>
     /// <returns>Retorna uma lista de dicionários, onde cada dicionário representa uma linha do resultado, com as chaves como nomes das colunas e os valores como os dados correspondentes.</returns>
