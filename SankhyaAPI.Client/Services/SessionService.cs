@@ -17,13 +17,6 @@ namespace SankhyaAPI.Client.Services;
 public class SessionService(string baseUrl, string userName, string password) : DefaultClientService(baseUrl), ISankhyaApi
 {
     /// <summary>
-    /// Representa a resposta da API obtida a partir de uma chamada de serviço.
-    /// Esta variável armazena o resultado de operações assíncronas, como autenticação ou validação,
-    /// encapsulando o conteúdo e possíveis erros retornados pela API.
-    /// </summary>
-    private ApiResponse<ServiceResponse<LoginEntity>>? _apiResponse;
-
-    /// <summary>
     /// Representa o identificador único da sessão atualmente autenticada com a API Sankhya.
     /// </summary>
     /// <remarks>
@@ -39,6 +32,20 @@ public class SessionService(string baseUrl, string userName, string password) : 
     /// O valor é atribuído no momento do login bem-sucedido e redefinido no logout.
     /// </summary>
     protected string JSessionId = string.Empty;
+
+    /// <summary>
+    /// Identificador da sessão aberta por <see cref="LoginSankhya"/>, usado por fluxos que mantêm a sessão entre chamadas.
+    /// </summary>
+    protected string SessionIdAtual => _sessionId;
+
+    /// <summary>
+    /// Descarta os identificadores da sessão guardada na instância.
+    /// </summary>
+    protected void ClearSession()
+    {
+        _sessionId = string.Empty;
+        JSessionId = string.Empty;
+    }
 
     /// <summary>
     /// Realiza o login do usuário, autenticando com as credenciais fornecidas e recupera os detalhes da sessão de login.
@@ -60,10 +67,11 @@ public class SessionService(string baseUrl, string userName, string password) : 
             throw new ArgumentException("Senha não pode ser vazia", nameof(interno));
 
         request.SetServiceName(EServiceNames.Login);
-        _apiResponse = await ClientXml.Login(request);
-        _apiResponse?.Content?.VerificarErros();
-        ValidaResponseBodyLogin();
-        return _apiResponse!.Content!.ResponseBody.GetLoginEntity();
+        ApiResponse<ServiceResponse<LoginEntity>> apiResponse = await ClientXml.Login(request);
+        ServiceResponse<LoginEntity> content = EnsureContent(apiResponse);
+        content.VerificarErros();
+        ValidaResponseBodyLogin(content);
+        return content.ResponseBody.GetLoginEntity();
     }
 
     /// <summary>
@@ -74,7 +82,7 @@ public class SessionService(string baseUrl, string userName, string password) : 
     private async Task Logout(string sessionId)
     {
         ApiResponse<ServiceResponse<object>> apiResponse = await ClientXml.Logout($"{sessionId}.master");
-        apiResponse.Content?.VerificarErros();
+        EnsureContent(apiResponse).VerificarErros();
     }
 
     /// <summary>
@@ -82,10 +90,28 @@ public class SessionService(string baseUrl, string userName, string password) : 
     /// Lança uma exceção caso o corpo da resposta seja nulo, indicando uma falha no processo de autenticação.
     /// </summary>
     /// <exception cref="Exception">Lançada quando o corpo da resposta é nulo ou inválido.</exception>
-    private void ValidaResponseBodyLogin()
+    private static void ValidaResponseBodyLogin(ServiceResponse<LoginEntity> content)
     {
-        if (_apiResponse?.Content?.ResponseBody == null)
+        if (content.ResponseBody == null)
             throw new Exception("Alguma coisa saiu mal no login");
+    }
+
+    /// <summary>
+    /// Garante que a chamada HTTP teve sucesso e trouxe conteúdo, para que falhas de transporte
+    /// (HTTP 4xx/5xx, timeout, corpo vazio) não sejam confundidas com resposta vazia.
+    /// </summary>
+    /// <exception cref="HttpRequestException">Lançada quando o status HTTP não é de sucesso ou o corpo veio vazio.</exception>
+    protected static ServiceResponse<T> EnsureContent<T>(ApiResponse<ServiceResponse<T>> response)
+        where T : class
+    {
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException(
+                $"Falha HTTP na chamada ao Sankhya: {(int)response.StatusCode} {response.ReasonPhrase}",
+                response.Error,
+                response.StatusCode);
+
+        return response.Content
+            ?? throw new HttpRequestException("A resposta do Sankhya veio sem conteúdo.");
     }
 
     /// <summary>
@@ -94,17 +120,40 @@ public class SessionService(string baseUrl, string userName, string password) : 
     /// <typeparam name="T">O tipo da entidade a ser processada.</typeparam>
     /// <param name="client">A função que representa a operação do cliente a ser executada.</param>
     /// <param name="envelope">O envelope contendo os dados da solicitação a serem enviados ao cliente.</param>
-    /// <returns>Retorna uma tarefa que representa a operação assíncrona. O resultado da tarefa contém um <see cref="ApiResponse{T}"/> encapsulando um objeto <see cref="ServiceResponse{T}"/> com o resultado da operação.</returns>
-    private async Task<ApiResponse<ServiceResponse<T>>> Execute<T>(
+    /// <returns>Retorna o <see cref="ServiceResponse{T}"/> já validado (HTTP e erros do Sankhya).</returns>
+    private async Task<ServiceResponse<T>> Execute<T>(
         Func<string, ServiceRequest<T>, Task<ApiResponse<ServiceResponse<T>>>> client,
         ServiceRequest<T> envelope
     )
         where T : class, new()
     {
-        await LoginSankhya(userName, password);
-        ApiResponse<ServiceResponse<T>> response = await client(JSessionId, envelope);
-        await LogoutSankhya();
-        return response;
+        // A sessão fica em variáveis locais: chamadas concorrentes na mesma instância não compartilham estado.
+        LoginEntity login = await Login(userName, password);
+
+        try
+        {
+            ServiceResponse<T> content = EnsureContent(await client(login.JSessionId, envelope));
+            content.VerificarErros();
+            return content;
+        } finally
+        {
+            await TryLogout(login.SessionId);
+        }
+    }
+
+    /// <summary>
+    /// Encerra a sessão sem propagar falha: o resultado (ou o erro) da operação já executada não pode ser
+    /// perdido por causa do logout. Se o logout falhar, a sessão expira no servidor.
+    /// </summary>
+    protected async Task TryLogout(string sessionId)
+    {
+        try
+        {
+            await Logout(sessionId);
+        } catch
+        {
+            // best effort
+        }
     }
 
     /// <summary>
@@ -117,15 +166,14 @@ public class SessionService(string baseUrl, string userName, string password) : 
     private async Task<ResponseBody<T>> ExecuteQuery<T>(string script)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute(ClientJson.Query, ExecuteQueryGeneric.CreateQueryEnvelope<T>(script));
+        ServiceResponse<T> response = await Execute(ClientJson.Query, ExecuteQueryGeneric.CreateQueryEnvelope<T>(script));
 
-        if (response.Content?.ResponseBody == null)
+        if (response.ResponseBody == null)
         {
             throw new Exception("Erro de sintaxe na consulta. Confira o script SQL passado como parâmetro.");
         }
 
-        response.Content?.VerificarErros();
-        return response.Content!.ResponseBody;
+        return response.ResponseBody;
     }
 
 
@@ -139,12 +187,9 @@ public class SessionService(string baseUrl, string userName, string password) : 
     protected async Task<List<T>> LoadRequest<T>(string query, string entityName)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute(
-                                                       ClientXml.LoadRecordsGeneric,
-                                                       LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query));
-        response.Content?.VerificarErros();
+        ServiceResponse<T> response = await Execute(ClientXml.LoadRecordsGeneric, LoadRecordsGeneric.CreateLoadEnvelope<T>(entityName, query));
 
-        List<T>? entities = response.Content?.ResponseBody.Entities?.Entity;
+        List<T>? entities = response.ResponseBody.Entities?.Entity;
 
         return entities ?? [];
     }
@@ -159,12 +204,9 @@ public class SessionService(string baseUrl, string userName, string password) : 
     protected async Task<List<T>> UpdateRequest<T>(List<T> requests, string entityName)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute(
-                                                       ClientXml.SaveRecordsGeneric,
-                                                       SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName));
-        response.Content?.VerificarErros();
+        ServiceResponse<T> response = await Execute(ClientXml.SaveRecordsGeneric, SaveRecordsGeneric.CreateUpdateEnvelope(requests, entityName));
 
-        List<T>? entities = response.Content?.ResponseBody.Entities?.Entity;
+        List<T>? entities = response.ResponseBody.Entities?.Entity;
 
         return entities ?? [];
     }
@@ -178,10 +220,7 @@ public class SessionService(string baseUrl, string userName, string password) : 
     protected async Task DeleteRequest<T>(List<T> requests, string entityName)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute(
-                                                       ClientXml.RemoveRecordsGeneric,
-                                                       RemoveRecordsGeneric.CreateRemoveEnvelope(requests, entityName));
-        response.Content?.VerificarErros();
+        await Execute(ClientXml.RemoveRecordsGeneric, RemoveRecordsGeneric.CreateRemoveEnvelope(requests, entityName));
     }
 
     /// <summary>
@@ -194,12 +233,9 @@ public class SessionService(string baseUrl, string userName, string password) : 
     protected async Task<List<T>> CreateRequest<T>(List<T> requests, string entityName)
         where T : class, new()
     {
-        ApiResponse<ServiceResponse<T>> response = await Execute(
-                                                       ClientXml.SaveRecordsGeneric,
-                                                       SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName));
-        response.Content?.VerificarErros();
+        ServiceResponse<T> response = await Execute(ClientXml.SaveRecordsGeneric, SaveRecordsGeneric.CreateInsertEnvelope(requests, entityName));
 
-        List<T>? entities = response.Content?.ResponseBody.Entities?.Entity;
+        List<T>? entities = response.ResponseBody.Entities?.Entity;
 
         return entities ?? [];
     }

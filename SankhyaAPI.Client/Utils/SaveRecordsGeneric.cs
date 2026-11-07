@@ -44,7 +44,7 @@ public static class SaveRecordsGeneric
     )
         where T : class, new()
     {
-        SankhyaModelBase.ValidateNullableStateProperties(objs);
+        SankhyaModelBase.ValidateNullableStateProperties(objs, true);
 
         ObjectUtilsMethods.ValidarCamposChave(objs, true);
         var envelope = new ServiceRequest<T>
@@ -68,7 +68,7 @@ public static class SaveRecordsGeneric
             }
         };
         var sankhyaEntity = new SankhyaEntity { Path = "", Field = ObjectUtilsMethods.GetFieldsFromObject(new T()) };
-        envelope.SetServiceName(EServiceNames.RemoveRecords);
+        envelope.SetServiceName(EServiceNames.SaveRecords);
         envelope.RequestBody.DataSet.SetRootEntity(entityName);
         envelope.RequestBody.DataSet.Entity.Add(sankhyaEntity);
         return envelope;

@@ -32,12 +32,14 @@ public sealed class RelatorioService(
         {
             await LoginSankhya(_userName, _password);
             ApiResponse<ServiceResponse<string>> response = await ClientXml.VisualizadorRelatorio(JSessionId, envelope);
-            response.Content!.VerificarErros();
-            return response.Content!.ResponseBody.Chave!.Valor!;
-        } catch (Exception ex)
+            ServiceResponse<string> content = EnsureContent(response);
+            content.VerificarErros();
+            return content.ResponseBody.Chave!.Valor!;
+        } catch
         {
-            await LogoutSankhya();
-            throw new Exception(ex.Message);
+            await TryLogout(SessionIdAtual);
+            ClearSession();
+            throw;
         }
     }
 
@@ -46,20 +48,17 @@ public sealed class RelatorioService(
         try
         {
             ApiResponse<Stream> response = await ClientFile.ObterRelatorio(JSessionId, key);
-            if (response.Content == null)
-            {
-                throw new Exception("O conteúdo do relatório é nulo");
-            }
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException(
+                    $"Falha HTTP ao obter o relatório: {(int)response.StatusCode} {response.ReasonPhrase}",
+                    response.Error,
+                    response.StatusCode);
 
-            Stream? content = response.Content;
-
-            return content;
-        } catch (Exception ex)
-        {
-            throw new Exception(ex.Message);
+            return response.Content ?? throw new Exception("O conteúdo do relatório é nulo");
         } finally
         {
-            await LogoutSankhya();
+            await TryLogout(SessionIdAtual);
+            ClearSession();
         }
     }
 }
