@@ -161,6 +161,8 @@ Ainda aberta:
 
 ## Constatado na homologação (entrega A)
 
+Resumo abaixo. A referência completa e mantida do protocolo está em [`sankhya-protocolo.md`](sankhya-protocolo.md).
+
 - Banco SQL Server 2022.
 - Sessão inválida ou expirada devolve `status="3"` com "Não autorizado.", tanto no XML quanto no JSON. Logout devolve `status="1"`.
 - O loadRecords devolve `<metadata><fields><field name=...>` e acrescenta campos de apresentação no fim (`includePresentationFields="S"`). A paginação vem com `disableRowsLimit="false"` e `offsetPage`, 50 registros por página, e a resposta traz `hasMoreResult`.
