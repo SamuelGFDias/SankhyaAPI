@@ -24,6 +24,13 @@ A referência está em [`docs/sankhya-protocolo.md`](../../../docs/sankhya-proto
 - As colunas do loadRecords se mapeiam pela `<metadata>`, porque os campos de apresentação vêm no fim.
 - O servidor lê o corpo XML como UTF-8, qualquer que seja o charset declarado.
 - `ORDER BY` dentro de subconsulta é recusado pelo SQL Server.
+- Uma sessão não aceita duas requisições simultâneas ("situação de concorrência"): é preciso um pool de sessões.
+- saveRecord de update com chave inexistente **cria** o registro (upsert).
+- Erros de banco chegam como texto cru (sem código); RAISERROR de trigger vem como "SQL-50001 texto".
+- Item de nota (TGFITE) não grava pelo CRUD genérico (status 0 sem mensagem). O executeQuery recusa DDL e DML.
+- Tabela de erros reais por categoria: seção 6.1 da referência.
+
+Manutenção do repositório (gates, release, impedimentos já resolvidos): skill `sankhyaapi-desenvolvimento`.
 
 ## Rodar os testes reais
 

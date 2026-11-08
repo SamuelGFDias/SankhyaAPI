@@ -53,6 +53,10 @@
 	<ItemGroup>
 		<None Include="README.md" Pack="true" PackagePath="\" />
 		<None Include="LICENSE.txt" Pack="true" PackagePath="\" />
+		<!-- Skill para agentes de IA, CHANGELOG e guia de migração: a skill lê esses arquivos da pasta da versão instalada. -->
+		<None Include="..\skills\sankhyaapi-client\**\*" Pack="true" PackagePath="skills\sankhyaapi-client\" Visible="false" />
+		<None Include="..\CHANGELOG.md" Pack="true" PackagePath="\" Visible="false" />
+		<None Include="..\docs\migracao-6.0.md" Pack="true" PackagePath="docs\" Visible="false" />
 	</ItemGroup>
 
 </Project>
