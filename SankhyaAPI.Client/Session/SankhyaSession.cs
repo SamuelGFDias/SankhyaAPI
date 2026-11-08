@@ -48,7 +48,7 @@ public interface ISankhyaSession : IAsyncDisposable
     Task<T> ExecuteAsync<T>(Func<string, CancellationToken, Task<T>> operation, CancellationToken cancellationToken = default);
 }
 
-internal sealed class SankhyaSession : ISankhyaSession
+internal sealed class SankhyaSession : ISankhyaSession, IDisposable
 {
     private readonly ISankhyaTransport _transport;
     private readonly SankhyaClientOptions _options;
@@ -59,7 +59,8 @@ internal sealed class SankhyaSession : ISankhyaSession
     private readonly ConcurrentDictionary<string, SankhyaSessionInfo> _open = new();
 
     private readonly SemaphoreSlim _explicitLock = new(1, 1);
-    private SankhyaSessionInfo? _explicit;
+    private volatile SankhyaSessionInfo? _explicit;
+    private volatile bool _disposed;
 
     public SankhyaSession(ISankhyaTransport transport, SankhyaClientOptions options, ILogger<SankhyaSession>? logger = null)
     {
@@ -159,7 +160,13 @@ internal sealed class SankhyaSession : ISankhyaSession
             }
         } finally
         {
-            if (session != null) _idle.Add(session);
+            if (session != null)
+            {
+                // Depois do dispose, a sessão que volta de uma operação em andamento é encerrada, não reaproveitada.
+                if (_disposed) await TryLogoutAsync(session.SessionId);
+                else _idle.Add(session);
+            }
+
             _slots.Release();
         }
     }
@@ -212,8 +219,13 @@ internal sealed class SankhyaSession : ISankhyaSession
         }
     }
 
+    /// <summary>Descarte síncrono (o contêiner de DI chama quando é descartado de forma síncrona).</summary>
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
         var sessions = _open.Values.ToList();
         _open.Clear();
         while (_idle.TryTake(out _)) { }

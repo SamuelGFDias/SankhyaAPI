@@ -20,6 +20,7 @@ namespace SankhyaAPI.Client;
 public sealed class SankhyaClient : IAsyncDisposable
 {
     private readonly HttpClient? _ownedHttpClient;
+    private readonly SankhyaClientOptions _options;
 
     internal SankhyaClient(ISankhyaTransport transport, ISankhyaSession session, SankhyaClientOptions options, HttpClient? ownedHttpClient = null)
     {
@@ -27,6 +28,7 @@ public sealed class SankhyaClient : IAsyncDisposable
         Session = session;
         Sql = new SankhyaSqlClient(transport, session, options.Dialect);
         Reports = new SankhyaReports(transport, session);
+        _options = options;
         _ownedHttpClient = ownedHttpClient;
     }
 
@@ -62,7 +64,7 @@ public sealed class SankhyaClient : IAsyncDisposable
     /// atributos. <paramref name="entityName"/> substitui o nome da entidade do mapa.
     /// </summary>
     public ISankhyaRepository<T> Repository<T>(string? entityName = null) where T : class, new() =>
-        new SankhyaRepository<T>(Transport, Session, entityName);
+        new SankhyaRepository<T>(Transport, Session, entityName, _options.VerifyExistenceOnUpdate);
 
     public async ValueTask DisposeAsync()
     {

@@ -46,6 +46,41 @@ internal static partial class EntityXml
         return [dataSet];
     }
 
+    /// <summary>loadRecords pedindo só os campos da chave (para conferir existência).</summary>
+    public static IEnumerable<XElement> LoadKeys(EntityMap map, string entityName, string expression, IReadOnlyList<Parameter> parameters) =>
+    [
+        new XElement(
+            "dataSet",
+            new XAttribute("rootEntity", entityName),
+            new XAttribute("includePresentationFields", "N"),
+            new XAttribute("disableRowsLimit", "true"),
+            new XElement("entity", new XAttribute("path", ""), map.Keys.Select(k => new XElement("field", new XAttribute("name", k.Writes[0].Column)))),
+            new XElement("criteria", new XElement("expression", expression), parameters.Select(p => new XElement("parameter", new XAttribute("type", p.Type), p.Value))))
+    ];
+
+    /// <summary>Lê as linhas da resposta só com as chaves, devolvendo objetos com as chaves preenchidas.</summary>
+    public static List<object> ReadKeys(EntityMap map, XElement? responseBody)
+    {
+        XElement? entities = responseBody?.Element("entities");
+        if (entities == null) return [];
+
+        List<string?> columns = entities.Element("metadata")?.Element("fields")?.Elements("field").Select(f => f.Attribute("name")?.Value).ToList()
+                             ?? map.Keys.Select(k => (string?)k.Writes[0].Column).ToList();
+        if (columns.Count == 0) columns = map.Keys.Select(k => (string?)k.Writes[0].Column).ToList();
+
+        var result = new List<object>();
+        foreach (XElement element in entities.Elements("entity"))
+        {
+            var row = element.Elements().ToDictionary(c => ColumnName(c.Name.LocalName, columns), c => (string?)c.Value, StringComparer.OrdinalIgnoreCase);
+            object entity = map.Create();
+            foreach (MemberMap key in map.Keys)
+                if (row.TryGetValue(key.Writes[0].Column, out string? text)) key.Assign(entity, key.Read!.Compose([text]));
+            result.Add(entity);
+        }
+
+        return result;
+    }
+
     public static IEnumerable<XElement> Insert(EntityMap map, string entityName, IReadOnlyList<object> entities)
     {
         foreach (object entity in entities) ValidateInsertKeys(map, entity);

@@ -21,7 +21,7 @@ public class CrudFakeTests : IDisposable
     public void Dispose() => _fake.Dispose();
 
     private ISankhyaRepository<Usuario> Usuarios() => _fake.CreateClient().Repository<Usuario>("Usuario");
-    private ISankhyaRepository<Produto> Produtos() => _fake.CreateClient().Repository<Produto>("Produto");
+    private ISankhyaRepository<Produto> Produtos() => _fake.CreateClient(configure: o => o.VerifyExistenceOnUpdate = false).Repository<Produto>("Produto");
 
     [Fact]
     public async Task FindAsync_faz_login_com_credenciais_e_usa_cookie_da_sessao()
@@ -192,7 +192,9 @@ public class CrudFakeTests : IDisposable
     {
         _fake.WithHttpStatus(Load, 500);
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => Usuarios().FindAsync("1 = 1"));
+        var ex = await Assert.ThrowsAsync<SankhyaTransportException>(() => Usuarios().FindAsync("1 = 1"));
+        Assert.Equal(System.Net.HttpStatusCode.InternalServerError, ex.HttpStatus);
+        Assert.Equal(SankhyaErrorKind.Unavailable, ex.Kind);
     }
 
     [Fact]
@@ -200,9 +202,10 @@ public class CrudFakeTests : IDisposable
     {
         _fake.WithError(Login, "Usuário/Senha inválido.");
 
-        var ex = await Assert.ThrowsAsync<SankhyaException>(() => Usuarios().FindAsync("1 = 1"));
+        var ex = await Assert.ThrowsAsync<SankhyaAuthenticationException>(() => Usuarios().FindAsync("1 = 1"));
 
         Assert.Contains("inválido", ex.Message);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, ex.SuggestedHttpStatus);
         Assert.Empty(_fake.Calls(Load));
     }
 

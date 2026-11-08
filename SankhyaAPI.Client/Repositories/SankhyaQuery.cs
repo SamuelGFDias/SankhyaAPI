@@ -34,13 +34,27 @@ public sealed class SankhyaQuery<T> where T : class, new()
     /// </summary>
     public SankhyaQuery<T> Where(string expression, params object[] values)
     {
-        int marks = expression.Count(c => c == '?');
+        int marks = CountMarks(expression);
         if (marks != values.Length)
             throw new ArgumentException($"A expressão tem {marks} '?' e foram passados {values.Length} valores.", nameof(values));
 
         _filters.Add(expression);
         _parameters.AddRange(values.Select(Parameter.From));
         return this;
+    }
+
+    /// <summary><c>?</c> fora de literais entre aspas simples.</summary>
+    private static int CountMarks(string expression)
+    {
+        int count = 0;
+        bool quoted = false;
+        foreach (char c in expression)
+        {
+            if (c == '\'') quoted = !quoted;
+            else if (c == '?' && !quoted) count++;
+        }
+
+        return count;
     }
 
     /// <summary>Ordena pela coluna mapeada da propriedade (não aceita texto livre).</summary>

@@ -1,3 +1,4 @@
+using SankhyaAPI.Client.Exceptions;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Unit;
@@ -14,7 +15,7 @@ public class ChaveCompostaFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ISankhyaRepository<ItemNota> Itens() => _fake.CreateClient().Repository<ItemNota>("ItemNota");
+    private ISankhyaRepository<ItemNota> Itens() => _fake.CreateClient(configure: o => o.VerifyExistenceOnUpdate = false).Repository<ItemNota>("ItemNota");
 
     [Fact]
     public async Task Insert_envia_a_parte_informada_e_omite_a_auto_numerada()

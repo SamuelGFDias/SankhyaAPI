@@ -270,9 +270,17 @@ public static class SankhyaFakeServerExtensions
     /// <param name="fake">Servidor fake que recebe as requisições do cliente.</param>
     /// <param name="mode">Modo de sessão do cliente.</param>
     /// <param name="maxRetries">Número máximo de novas tentativas do cliente.</param>
-    public static SankhyaClient CreateClient(this SankhyaFakeServer fake, SessionMode mode = SessionMode.PerOperation, int maxRetries = 2) =>
-        SankhyaClient.Create(new SankhyaClientOptions
+    public static SankhyaClient CreateClient(
+        this SankhyaFakeServer fake,
+        SessionMode mode = SessionMode.PerOperation,
+        int maxRetries = 2,
+        Action<SankhyaClientOptions>? configure = null)
+    {
+        var options = new SankhyaClientOptions
         {
             BaseUrl = fake.BaseUrl, Usuario = "usuario", Senha = "senha", AllowHttp = true, SessionMode = mode, MaxRetries = maxRetries
-        });
+        };
+        configure?.Invoke(options);
+        return SankhyaClient.Create(options);
+    }
 }

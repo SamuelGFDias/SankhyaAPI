@@ -108,6 +108,50 @@ Envelope JSON: `{"serviceName":"DbExplorerSP.executeQuery","requestBody":{"sql":
 | **Delete** (`CRUDServiceProvider.removeRecord`): `<requestBody><entity rootEntity="X"><id><CHAVE>v</CHAVE></id>...</entity></requestBody>`, com um `<id>` por registro e as várias partes da chave composta dentro dele | H/T |
 | Chave composta com um campo auto-numerado (por exemplo NUNOTA + SEQUENCIA): no insert vai só a parte não numerada; no update e no delete, as duas | T (fake); falta real |
 
+## 6.1 Erros (sondados em 2026-11-08)
+
+Regra geral: **o Sankhya responde HTTP 200 em quase tudo**, inclusive login inválido e rota inexistente. O tipo do erro só aparece no `status`, no `tsErrorCode` (quando há) e no texto. Os erros do banco chegam com a mensagem crua do SQL Server, sem código. O pacote classifica cada erro em `SankhyaErrorKind`, com um status HTTP sugerido (`SankhyaErrorClassifier`).
+
+| Cenário | Serviço | status | tsErrorCode | Mensagem (decodificada) | Categoria / HTTP |
+|---|---|---|---|---|---|
+| Senha errada | login | 0 | CORE_E01434 | Usuário/Senha inválido. | AuthenticationFailed / 401 |
+| Usuário inexistente | login | 0 | CORE_E01428 | Usuário/Senha inválido. | AuthenticationFailed / 401 |
+| Sessão expirada | qualquer | 3 | — | Não autorizado. | SessionExpired / 401 (renovada e repetida uma vez) |
+| Requisições simultâneas na mesma sessão | qualquer | 0 | — | O serviço foi cancelado por situação de concorrência... | Concurrency / 409 |
+| Entidade inexistente | loadRecords | 0 | — | Não foi encontrado objeto de acesso a dados para este BMP: mge-dwf:X | InvalidRequest / 400 |
+| Campo inexistente | loadRecords | 0 | CORE_E04064 | Descritor do campo 'X' inválido. | InvalidRequest / 400 (Field) |
+| Expressão inválida | loadRecords | 0 | — | Sintaxe incorreta próxima a '='. | InvalidRequest / 400 |
+| Coluna inexistente na expressão | loadRecords | 0 | — | O identificador de várias partes "Usuario.X" não pôde ser associado. | InvalidRequest / 400 |
+| Parâmetro `I` com texto | loadRecords | 0 | CORE_E02271 | Erro de conversão para número: abc | InvalidValue / 422 |
+| Faltando parâmetro | loadRecords | 0 | — | Parametros informados insuficientes para o critério de consulta. | InvalidRequest / 400 |
+| modifiedSince sem LOGTABOPER | loadRecords | 0 | CORE_E07537 | Necessario habilitar o parametro 'LOGTABOPER'. | NotConfigured / 501 |
+| Chave duplicada | saveRecord | 0 | — | Violação da restrição PRIMARY KEY 'PK_AD_TESTE'. Não é possível inserir a chave duplicada... | DuplicateKey / 409 |
+| Texto maior que a coluna | saveRecord | 0 | — | Propriedade 'AD_TESTE.TEXTO' com largura acima do limite: (150 > 100) | InvalidValue / 422 (Field) |
+| Inteiro com texto | saveRecord | 0 | — | Erro de conversão de valor para o campo 'INTEIRO': abc | InvalidValue / 422 (Field) |
+| Campo inexistente | saveRecord | 0 | — | Campo não existe: AD_TESTE->X | InvalidRequest / 400 (Field) |
+| SQL com erro de sintaxe | executeQuery | 0 | — | O comando SELECT está em formato inválido. | InvalidRequest / 400 |
+| Tabela ou coluna inexistente | executeQuery | 0 | — | Nome de objeto 'X' inválido. / Nome de coluna 'X' inválido. | InvalidRequest / 400 |
+| UPDATE/DELETE/INSERT/DDL | executeQuery | 0 | — | Permitido apenas a execução de consultas, a instrução possui 'UPDATE', 'DELETE' ou 'INSERT'... | InvalidRequest / 400 |
+| Divisão por zero | executeQuery | 0 | — | Erro de divisão por zero. | QueryFailed / 400 |
+| RAISERROR na consulta | executeQuery | 0 | — | o texto do RAISERROR, cru | QueryFailed / 400 |
+
+**Aceito sem erro, mas atenção:**
+
+| Cenário | Comportamento constatado | Como o pacote trata |
+|---|---|---|
+| **Update de chave inexistente** | **cria o registro** (upsert), `status="1"` | `VerifyExistenceOnUpdate` (padrão ligado) consulta as chaves antes e lança `SankhyaNotFoundException` (404) |
+| Delete de chave inexistente | `status="1"`, nada acontece | não detectável sem consulta extra |
+| Insert sem a chave numa tabela de chave simples | o servidor **numera sozinho** (gerou ID 1, 2), mesmo sem a coluna marcada auto-numerada | o pacote exige a chave não auto-numerada; marque `AutoNumbered` quando o Sankhya numera |
+| Data inválida (31/02/2026) e opção fora da lista (`Z`) | `status="1"`, gravado | sem validação no servidor: valide no domínio |
+| Rota inexistente (`/mge/naoexiste.sbr`) | HTTP 200 | — |
+
+**Trigger com regra de negócio:** não foi possível criar uma trigger na homologação (o executeQuery recusa DDL), então o caminho do saveRecord com RAISERROR não foi sondado. O que se viu: o banco devolve a mensagem crua (chave duplicada, RAISERROR na consulta), sem código. O pacote trata assim:
+- toda recusa de saveRecord ou removeRecord que não bate com um erro técnico conhecido vira `BusinessRule` (422), com a mensagem da regra limpa;
+- no SQL Server, sai a frase "A transação foi encerrada no gatilho...";
+- no Oracle, `ORA-20xxx` (RAISE_APPLICATION_ERROR) também vira `BusinessRule`, e saem o código e a pilha `ORA-06512`.
+
+Para confirmar, crie numa base de teste uma trigger em AD_TESTE com RAISERROR e rode `ErrosRealTests`.
+
 ## 7. Dicionário de dados e tipos
 
 | Fato | Fonte |

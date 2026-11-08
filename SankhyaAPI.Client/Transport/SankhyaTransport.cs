@@ -44,7 +44,7 @@ public interface ISankhyaTransport
     /// </summary>
     /// <param name="idempotent">Se a operação pode ser repetida em falha transitória de transporte.</param>
     /// <exception cref="SankhyaException">O Sankhya respondeu com status diferente de 1.</exception>
-    /// <exception cref="HttpRequestException">Falha HTTP ou resposta ilegível.</exception>
+    /// <exception cref="SankhyaTransportException">Falha HTTP, tempo esgotado ou resposta ilegível.</exception>
     Task<SankhyaXmlResponse> SendXmlAsync(
         string serviceName,
         IEnumerable<XElement> requestBody,
@@ -167,8 +167,30 @@ internal sealed class SankhyaTransport : ISankhyaTransport
         using var request = new HttpRequestMessage(HttpMethod.Post, relativePath);
         request.Headers.Add("Cookie", $"JSESSIONID={sessionId}");
 
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_options.Timeout);
+        try
+        {
+            return await DownloadCoreAsync(request, relativePath, timeout.Token);
+        } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new SankhyaTransportException("Tempo esgotado ao baixar o arquivo do Sankhya.", SankhyaErrorKind.Timeout, relativePath, ex);
+        } catch (HttpRequestException ex)
+        {
+            throw new SankhyaTransportException(ex.Message, SankhyaErrorKind.Unavailable, relativePath, ex, ex.StatusCode);
+        }
+    }
+
+    private async Task<Stream> DownloadCoreAsync(HttpRequestMessage request, string relativePath, CancellationToken cancellationToken)
+    {
         using HttpResponseMessage response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        EnsureHttpSuccess(response, relativePath);
+        if (!response.IsSuccessStatusCode)
+            throw new SankhyaTransportException(
+                $"Falha HTTP ao baixar o arquivo do Sankhya: {(int)response.StatusCode} {response.ReasonPhrase}",
+                SankhyaErrorKind.Unavailable,
+                relativePath,
+                null,
+                response.StatusCode);
 
         var buffer = new MemoryStream();
         await response.Content.CopyToAsync(buffer, cancellationToken);
@@ -207,7 +229,7 @@ internal sealed class SankhyaTransport : ISankhyaTransport
                 TResult result = await read(response.Content, timeout.Token);
 
                 SankhyaTelemetry.Calls.Add(1, tags);
-                Log.Called(_logger, serviceName, "http-ok", (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+                Log.Called(_logger, serviceName, (int)response.StatusCode, (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds);
                 return result;
             } catch (Exception ex) when (attempt < maxAttempts && IsTransient(ex, cancellationToken))
             {
@@ -218,7 +240,15 @@ internal sealed class SankhyaTransport : ISankhyaTransport
             {
                 activity?.SetStatus(ActivityStatusCode.Error, "timeout");
                 SankhyaTelemetry.Errors.Add(1, tags, new KeyValuePair<string, object?>("sankhya.status", "timeout"));
-                throw new HttpRequestException($"Tempo esgotado na chamada ao Sankhya ({serviceName}).", ex);
+                throw new SankhyaTransportException($"Tempo esgotado na chamada ao Sankhya ({serviceName}).", SankhyaErrorKind.Timeout, serviceName, ex);
+            } catch (HttpRequestException ex)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "unavailable");
+                SankhyaTelemetry.Errors.Add(1, tags, new KeyValuePair<string, object?>("sankhya.status", "transport"));
+                throw new SankhyaTransportException(ex.Message, SankhyaErrorKind.Unavailable, serviceName, ex, ex.StatusCode);
+            } catch (System.Text.Json.JsonException ex)
+            {
+                throw new SankhyaTransportException("A resposta do Sankhya não pôde ser lida.", SankhyaErrorKind.Unavailable, serviceName, ex);
             } finally
             {
                 SankhyaTelemetry.Duration.Record(Stopwatch.GetElapsedTime(start).TotalMilliseconds, tags);
@@ -285,28 +315,22 @@ internal sealed class SankhyaTransport : ISankhyaTransport
 internal static class SankhyaResponses
 {
     private const string StatusSucesso = "1";
-    private const string StatusNaoAutorizado = "3";
 
     /// <summary>
     /// Decide pelo <c>status</c> (1 = sucesso); a mensagem só compõe o texto. Sem <c>status</c>, vale a presença
-    /// de mensagem.
+    /// de mensagem. O erro é classificado por <see cref="SankhyaErrorClassifier"/>.
     /// </summary>
     public static void EnsureSuccess(string serviceName, string? status, string? message, string? tsErrorCode)
     {
         bool falhou = string.IsNullOrEmpty(status) ? message != null : status != StatusSucesso;
         if (!falhou) return;
 
-        string texto = message ?? $"O Sankhya devolveu status {status} sem mensagem.";
-        string mensagemFinal = tsErrorCode != null ? $"SNK Error: {tsErrorCode} - {texto}" : $"SNK Error: {texto}";
-
+        SankhyaException erro = SankhyaErrorClassifier.Create(serviceName, status, message, tsErrorCode);
         SankhyaTelemetry.Errors.Add(
             1,
             new KeyValuePair<string, object?>("sankhya.service", serviceName),
-            new KeyValuePair<string, object?>("sankhya.status", status));
-
-        if (status == StatusNaoAutorizado)
-            throw new SankhyaSessionExpiredException(mensagemFinal, status, serviceName, tsErrorCode);
-
-        throw new SankhyaException(mensagemFinal, status, serviceName, tsErrorCode);
+            new KeyValuePair<string, object?>("sankhya.status", status),
+            new KeyValuePair<string, object?>("sankhya.error_kind", erro.Kind.ToString()));
+        throw erro;
     }
 }

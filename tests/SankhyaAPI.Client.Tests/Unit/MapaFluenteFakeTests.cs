@@ -1,3 +1,4 @@
+using SankhyaAPI.Client.Exceptions;
 using System.Text.Json;
 using SankhyaAPI.Client.Tests.Support;
 
@@ -21,7 +22,7 @@ public class MapaFluenteFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ISankhyaRepository<OrdemServico> Ordens() => _fake.CreateClient().Repository<OrdemServico>();
+    private ISankhyaRepository<OrdemServico> Ordens() => _fake.CreateClient(configure: o => o.VerifyExistenceOnUpdate = false).Repository<OrdemServico>();
 
     private static string Corpo(IReadOnlyList<WireMock.Logging.ILogEntry> chamadas) => chamadas.Single().RequestMessage!.Body!;
 
@@ -151,7 +152,7 @@ public class MapaFluenteFakeTests : IDisposable
     public async Task Mapa_fluente_e_atributos_geram_o_mesmo_envelope()
     {
         _fake.WithEntities(Save, ["10"]);
-        var cliente = _fake.CreateClient();
+        var cliente = _fake.CreateClient(configure: o => o.VerifyExistenceOnUpdate = false);
 
         await cliente.Repository<Produto>().UpdateAsync(new Produto { CodProd = 10, DescrProd = "X", Preco = 1.5m, Ativo = true });
         await cliente.Repository<ProdutoPoco>().UpdateAsync(new ProdutoPoco { CodProd = 10, DescrProd = "X", Preco = 1.5m, Ativo = true },

@@ -27,7 +27,7 @@ public interface ISankhyaSql
     Task<List<Dictionary<string, object?>>> QueryAsDictionaryAsync(SankhyaSql sql, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Até <paramref name="maxRows"/> linhas (no máximo 5000), sem erro quando há mais: <see cref="SankhyaRows{T}.HasMore"/>
+    /// Até <paramref name="maxRows"/> linhas (no máximo 4999), sem erro quando há mais: <see cref="SankhyaRows{T}.HasMore"/>
     /// diz se ficaram linhas de fora.
     /// </summary>
     Task<SankhyaRows<T>> QueryTopAsync<T>(SankhyaSql sql, int maxRows, CancellationToken cancellationToken = default) where T : class, new();
@@ -62,14 +62,13 @@ internal sealed partial class SankhyaSqlClient(ISankhyaTransport transport, ISan
         where T : class, new()
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxRows, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxRows, ServerRowLimit);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxRows, ServerRowLimit - 1);
 
-        // Com maxRows o servidor não marca burstLimit: pede uma linha a mais para saber se há outras.
-        int asked = Math.Min(maxRows + 1, ServerRowLimit);
-        using JsonDocument document = await ExecuteAsync(sql.Render(dialect), asked, cancellationToken);
+        // Com maxRows o servidor não marca burstLimit: pede uma linha a mais para saber se há outras
+        // (por isso o máximo é 4999: com 5000 + 1 o teto do servidor esconderia a linha extra).
+        using JsonDocument document = await ExecuteAsync(sql.Render(dialect), maxRows + 1, cancellationToken);
         List<T> rows = Map<T>(document);
-        bool hasMore = rows.Count > maxRows || (asked == ServerRowLimit && rows.Count == ServerRowLimit && maxRows == ServerRowLimit);
-        return new SankhyaRows<T>(rows.Take(maxRows).ToList(), hasMore);
+        return new SankhyaRows<T>(rows.Take(maxRows).ToList(), rows.Count > maxRows);
     }
 
     public async IAsyncEnumerable<T> QueryPagedAsync<T>(
@@ -113,7 +112,7 @@ internal sealed partial class SankhyaSqlClient(ISankhyaTransport transport, ISan
             if (quoted) continue;
             if (c == '(') depth++;
             else if (c == ')') depth--;
-            else if (depth == 0 && OrderByAt().IsMatch(sql.AsSpan(i))) return true;
+            else if (depth == 0 && (i == 0 || !(char.IsLetterOrDigit(sql[i - 1]) || sql[i - 1] == '_')) && OrderByAt().IsMatch(sql.AsSpan(i))) return true;
         }
 
         return false;

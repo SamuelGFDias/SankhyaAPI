@@ -36,6 +36,14 @@ Versão com quebra de API, sem camada de compatibilidade com a 5.x. O guia de mi
 - **`QueryPagedAsync`** percorre resultados de qualquer tamanho com `OFFSET ... FETCH` e recusa SQL com `ORDER BY` próprio. **`QueryTopAsync`** limita com `maxRows` e avisa se há mais linhas (pede uma a mais, porque o servidor não marca `burstLimit` com `maxRows`).
 - Números inteiros do executeQuery voltam como `long` no dicionário (antes, `decimal`).
 
+### Erros tipados
+
+- **`SankhyaErrorKind`** em toda exceção: AuthenticationFailed, SessionExpired, Concurrency, InvalidRequest, QueryFailed, InvalidValue, DuplicateKey, ConstraintViolation, BusinessRule, NotFound, ResultTruncated, NotConfigured, Timeout, Unavailable, Unknown. Cada categoria tem `SuggestedHttpStatus` (401, 409, 400, 422, 404, 501, 504, 503, 502), e nunca 500 para erro conhecido. `Field` traz o campo quando a mensagem do servidor o identifica, e `ToProblem()` gera um `ProblemDetails` (RFC 9457).
+- **Classificação pelas respostas reais da homologação**: `tsErrorCode` quando há e, para erros do banco (mensagem crua do SQL Server ou do Oracle), o padrão do texto. Toda recusa de gravação sem erro técnico reconhecido (trigger, evento, validação) vira **`SankhyaBusinessRuleException`**, com a mensagem da regra limpa (sem "SNK Error:", sem a frase de rollback da trigger, sem código e pilha do Oracle).
+- Subclasses para `catch`: `SankhyaAuthenticationException`, `SankhyaSessionExpiredException`, `SankhyaBusinessRuleException`, `SankhyaNotFoundException`, `SankhyaTruncatedResultException`, `SankhyaTransportException` (timeout e indisponível; antes era `HttpRequestException`).
+- **Update de chave inexistente não cria mais registro**: o saveRecord do Sankhya é um upsert. `VerifyExistenceOnUpdate` (padrão ligado) confere as chaves antes e lança `SankhyaNotFoundException`.
+- Correções vindas da revisão: timeout no download do relatório, sessão devolvida ao pool depois do dispose agora é encerrada, descarte síncrono da sessão (DI), `ORDER BY` reconhecido só como palavra, `?` dentro de literal não conta como parâmetro, `QueryTopAsync` até 4999 linhas (sem falso positivo de `HasMore`).
+
 ### Source generator e AOT (P4)
 
 - **Source generator** empacotado no próprio NuGet (`analyzers/dotnet/cs`). Para cada modelo usado num `SankhyaEntityMap<T>` ou marcado com `[SankhyaEntity]`, gera acessores diretos e se registra por `[ModuleInitializer]`. Com isso, o pacote não usa reflexão nem compila expressões em tempo de execução (#17).
