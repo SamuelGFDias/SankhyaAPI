@@ -145,6 +145,25 @@ Regra geral: **o Sankhya responde HTTP 200 em quase tudo**, inclusive login inv�
 | Data inválida (31/02/2026) e opção fora da lista (`Z`) | `status="1"`, gravado | sem validação no servidor: valide no domínio |
 | Rota inexistente (`/mge/naoexiste.sbr`) | HTTP 200 | — |
 
+**Notas e contatos (TGFCAB, TGFITE, TGFCTT), sondados em 2026-11-08:**
+
+| Cenário | Resposta | Categoria |
+|---|---|---|
+| Trigger com RAISERROR (TGFCAB, data de negociação de 1900) | `status="0"`, "SQL-50001 Ano inferior ao limite permitido, veja o parâmetro de Limite Inferior para Ano. Nota de Nro Único: N." | BusinessRule (o pacote tira o prefixo `SQL-5xxxx`) |
+| Validação do Sankhya (contato sem endereço) | "O preenchimento do endereço do contato é obrigatório." | BusinessRule |
+| Empresa inexistente | `CORE_E00912` "Empresa não encontrada" | InvalidValue |
+| TOP inexistente | `CORE_E00916` "TOP não encontrada." | InvalidValue |
+| Tipo de venda inexistente (CODTIPVENDA 99999) | "Data truncation" | InvalidValue |
+| Parceiro inexistente | "A instrução INSERT conflitou com a restrição do FOREIGN KEY "FK_TGFCAB_TGFPAR2"... column 'CODPARC'." | ConstraintViolation (Field = CODPARC) |
+| `NUMNOTA` ausente no cabeçalho | "Não é possível inserir o valor NULL na coluna 'NUMNOTA'..." (o servidor não preenche; mande 0 em pedido) | ConstraintViolation |
+| TIPMOV inválido (`Z`) | aceito, `status="1"` | sem validação no servidor |
+| **Incluir item (ItemNota) pelo CRUD genérico** | `status="0"` com `<statusMessage></statusMessage>` **vazio** | Unknown, com a explicação. Item de nota exige o serviço de nota (`CACSP.incluirAlterarItemNota`), que **não existe no `/mge`** ("Nenhum provedor foi encontrado para o serviço") e cujo módulo `/mgecom` responde 302 nesta homologação |
+| Excluir contato inexistente | `status="0"` "Contato não existe: PK[4,210]" (a AD_TESTE devolve `status="1"`; depende da entidade) | NotFound |
+| Ler item de nota por chave composta (`NUNOTA`, `SEQUENCIA`) | funciona pelo loadRecords | — |
+| Contato (`CODPARC` + `CODCONTATO`): insert sem `CODCONTATO` | o servidor numera e devolve a chave completa | chave composta com a parte auto-numerada verificada |
+
+Uma exclusão chegou a levar mais de 100 s uma vez (e concluiu no servidor depois do timeout do cliente). Isso não se repetiu em outras execuções nem com duas sessões: foi lentidão intermitente da homologação. O timeout padrão de 100 s ficou.
+
 **Trigger com regra de negócio:** não foi possível criar uma trigger na homologação (o executeQuery recusa DDL), então o caminho do saveRecord com RAISERROR não foi sondado. O que se viu: o banco devolve a mensagem crua (chave duplicada, RAISERROR na consulta), sem código. O pacote trata assim:
 - toda recusa de saveRecord ou removeRecord que não bate com um erro técnico conhecido vira `BusinessRule` (422), com a mensagem da regra limpa;
 - no SQL Server, sai a frase "A transação foi encerrada no gatilho...";

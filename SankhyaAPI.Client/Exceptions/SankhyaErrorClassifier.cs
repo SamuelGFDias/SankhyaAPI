@@ -14,7 +14,8 @@ internal static partial class SankhyaErrorClassifier
 
     private static readonly string[] AuthCodes = ["CORE_E01434", "CORE_E01428"];
     private static readonly string[] InvalidRequestCodes = ["CORE_E04064", "CORE_E03405"];
-    private static readonly string[] InvalidValueCodes = ["CORE_E02271"];
+    // CORE_E00912 "Empresa não encontrada", CORE_E00916 "TOP não encontrada": referência informada que não existe.
+    private static readonly string[] InvalidValueCodes = ["CORE_E02271", "CORE_E00912", "CORE_E00916"];
     private static readonly string[] NotConfiguredCodes = ["CORE_E07537"];
 
     private static readonly string[] Concurrency = ["situação de concorrência", "situacao de concorrencia"];
@@ -35,7 +36,7 @@ internal static partial class SankhyaErrorClassifier
     private static readonly string[] InvalidValue =
     [
         "Erro de conversão", "largura acima do limite", "seriam truncados", "would be truncated", "ORA-12899", "ORA-01722", "ORA-01858",
-        "Conversion failed", "Falha na conversão", "fora do intervalo", "out-of-range"
+        "Conversion failed", "Falha na conversão", "fora do intervalo", "out-of-range", "Data truncation"
     ];
 
     private static readonly string[] InvalidRequest =
@@ -43,7 +44,7 @@ internal static partial class SankhyaErrorClassifier
         "objeto de acesso a dados", "Campo não existe", "Parametros informados insuficientes", "Sintaxe incorreta", "formato inválido",
         "Nome de objeto", "Nome de coluna", "não pôde ser associado", "Permitido apenas a execução de consultas", "Incorrect syntax",
         "Invalid object name", "Invalid column name", "could not be bound", "ORA-00904", "ORA-00942", "ORA-00933", "ORA-00936",
-        "Relacionamento:", "Descritor do campo"
+        "Relacionamento:", "Descritor do campo", "Nenhum provedor foi encontrado"
     ];
 
     /// <summary>Frases padrão que o SQL Server acrescenta quando a trigger desfaz a transação.</summary>
@@ -54,7 +55,18 @@ internal static partial class SankhyaErrorClassifier
 
     public static SankhyaException Create(string serviceName, string? status, string? rawMessage, string? tsErrorCode)
     {
-        string message = Clean(rawMessage) ?? $"O Sankhya devolveu status {status} sem mensagem.";
+        string? cleaned = Clean(rawMessage);
+        if (cleaned == null && status != "3")
+        {
+            // Visto na homologação: incluir ItemNota pelo CRUD genérico devolve status 0 com statusMessage vazio.
+            // Sem texto não há como saber a causa: não é regra de negócio (que sempre traz a mensagem da regra).
+            return new SankhyaException(
+                $"O Sankhya recusou {serviceName} (status {status}) sem mensagem. Algumas entidades (por exemplo, itens de nota) "
+              + "não aceitam gravação pelo CRUD genérico e exigem o serviço próprio do Sankhya.",
+                status, serviceName, tsErrorCode, null, SankhyaErrorKind.Unknown);
+        }
+
+        string message = cleaned ?? $"O Sankhya devolveu status {status} sem mensagem.";
         (SankhyaErrorKind kind, string? field) = Classify(serviceName, status, message, tsErrorCode);
 
         return kind switch
@@ -74,6 +86,7 @@ internal static partial class SankhyaErrorClassifier
         if (Is(tsErrorCode, AuthCodes) || serviceName == Login || Has(message, Auth)) return (SankhyaErrorKind.AuthenticationFailed, null);
         if (Has(message, Concurrency)) return (SankhyaErrorKind.Concurrency, null);
         if (Is(tsErrorCode, NotConfiguredCodes) || Has(message, NotConfigured)) return (SankhyaErrorKind.NotConfigured, null);
+        if (NotFoundByKey().IsMatch(message)) return (SankhyaErrorKind.NotFound, null);
         if (Has(message, DuplicateKey)) return (SankhyaErrorKind.DuplicateKey, field);
         if (Has(message, Constraint)) return (SankhyaErrorKind.ConstraintViolation, field);
         if (Is(tsErrorCode, InvalidValueCodes) || Has(message, InvalidValue)) return (SankhyaErrorKind.InvalidValue, field);
@@ -102,6 +115,9 @@ internal static partial class SankhyaErrorClassifier
 
         Match oracle = OracleUserError().Match(text);
         if (oracle.Success) text = oracle.Groups["texto"].Value;
+
+        // RAISERROR de trigger no SQL Server chega como "SQL-50001 texto da regra" (número do erro do usuário).
+        text = SqlServerUserErrorPrefix().Replace(text, "");
 
         text = OracleStack().Replace(text, " ");
         text = Spaces().Replace(text, " ").Trim();
@@ -137,6 +153,13 @@ internal static partial class SankhyaErrorClassifier
     /// <summary>Erro definido pelo usuário no Oracle (RAISE_APPLICATION_ERROR, -20000 a -20999).</summary>
     [GeneratedRegex(@"ORA-20\d{3}:\s*(?<texto>[^\r\n]*?)(?=\s*ORA-\d{5}|\r|\n|$)")]
     private static partial Regex OracleUserError();
+
+    /// <summary>"Contato não existe: PK[4,210]" (removeRecord de chave inexistente em algumas entidades).</summary>
+    [GeneratedRegex(@"não existe: PK\[")]
+    private static partial Regex NotFoundByKey();
+
+    [GeneratedRegex(@"^\s*SQL-5\d{4}\s+")]
+    private static partial Regex SqlServerUserErrorPrefix();
 
     [GeneratedRegex(@"ORA-0(6512|4088):[^\r\n]*")]
     private static partial Regex OracleStack();
