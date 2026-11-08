@@ -1,4 +1,3 @@
-using SankhyaAPI.Client.Interfaces;
 using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 

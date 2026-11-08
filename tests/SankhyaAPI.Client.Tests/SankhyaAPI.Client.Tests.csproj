@@ -20,6 +20,7 @@
 		<Using Include="SankhyaAPI.Client" />
 		<Using Include="SankhyaAPI.Client.Configuration" />
 		<Using Include="SankhyaAPI.Client.Repositories" />
+		<Using Include="SankhyaAPI.Client.Mapping" />
 		<Using Include="SankhyaAPI.Client.Sql" />
 		<ProjectReference Include="..\..\SankhyaAPI.Client\SankhyaAPI.Client.csproj" />
 	</ItemGroup>

@@ -1,5 +1,5 @@
 using System.Globalization;
-using SankhyaAPI.Client.MetaData;
+
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Real;
@@ -142,6 +142,43 @@ public class EscritaRealTests
         } finally
         {
             await ApagarSeExistir(service, id);
+        }
+    }
+
+    [RealFact]
+    public async Task Mapa_fluente_grava_e_le_campo_calculado_e_atualiza_por_campos_e_por_rastreio()
+    {
+        SankhyaMaps.Register<TesteDominioMap>();
+        var repo = SankhyaReal.Cliente().Repository<TesteDominio>();
+        int id = Random.Shared.Next(900_000, 1_000_000);
+
+        try
+        {
+            await repo.CreateAsync(new TesteDominio
+            {
+                Id = id, Texto = "Domínio", Quando = new DateTime(2026, 11, 7, 14, 35, 0), Situacao = Situacao.Pendente, Ativo = true
+            });
+
+            TesteDominio lido = (await repo.FindAsync("this.ID = ?", [Parameter.Inteiro(id)])).Single();
+            Assert.Equal(new DateTime(2026, 11, 7, 14, 35, 0), lido.Quando);
+            Assert.Equal(Situacao.Pendente, lido.Situacao);
+            Assert.Equal("Domínio", lido.Texto);
+
+            await repo.UpdateAsync(new TesteDominio { Id = id }, u => u.Clear(x => x.Texto).Clear(x => x.Quando));
+            TesteDominio limpo = (await repo.FindAsync("this.ID = ?", [Parameter.Inteiro(id)])).Single();
+            Assert.True(string.IsNullOrEmpty(limpo.Texto));
+            Assert.Null(limpo.Quando);
+            Assert.Equal(Situacao.Pendente, limpo.Situacao);
+
+            repo.Track(limpo);
+            limpo.Situacao = Situacao.Inativa;
+            await repo.UpdateAsync(limpo);
+            TesteDominio rastreado = (await repo.FindAsync("this.ID = ?", [Parameter.Inteiro(id)])).Single();
+            Assert.Equal(Situacao.Inativa, rastreado.Situacao);
+            Assert.True(rastreado.Ativo);
+        } finally
+        {
+            await ApagarSeExistir(Service(), id);
         }
     }
 

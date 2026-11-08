@@ -1,16 +1,43 @@
+using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
+using System.Xml.Linq;
+using SankhyaAPI.Client.Mapping;
 using SankhyaAPI.Client.Session;
 using SankhyaAPI.Client.Transport;
 
 namespace SankhyaAPI.Client.Repositories;
 
 /// <summary>
-/// CRUD de uma entidade do Sankhya (loadRecords, saveRecord, removeRecord).
+/// Campos de um update parcial: <see cref="Set{TProp}"/> envia o valor atual do campo, <see cref="Clear{TProp}"/>
+/// envia vazio (apaga no servidor). O que não for citado não vai.
+/// </summary>
+public sealed class UpdateFields<T>
+{
+    internal List<(string Member, bool Clear)> Fields { get; } = [];
+
+    public UpdateFields<T> Set<TProp>(Expression<Func<T, TProp>> property)
+    {
+        Fields.Add((MemberName(property), false));
+        return this;
+    }
+
+    public UpdateFields<T> Clear<TProp>(Expression<Func<T, TProp>> property)
+    {
+        Fields.Add((MemberName(property), true));
+        return this;
+    }
+
+    private static string MemberName<TProp>(Expression<Func<T, TProp>> property) =>
+        property.Body is MemberExpression { Member: var m } ? m.Name
+            : throw new ArgumentException("Use um acesso simples a propriedade, como x => x.Campo.", nameof(property));
+}
+
+/// <summary>
+/// CRUD de uma entidade do Sankhya (loadRecords, saveRecord, removeRecord), pelo mapa do modelo.
 /// </summary>
 public interface ISankhyaRepository<T> where T : class, new()
 {
-    /// <summary>
-    /// Nome da entidade (instância) no Sankhya, por exemplo <c>Produto</c>.
-    /// </summary>
+    /// <summary>Nome da entidade (instância) no Sankhya, por exemplo <c>Produto</c>.</summary>
     string EntityName { get; }
 
     /// <summary>
@@ -41,27 +68,65 @@ public interface ISankhyaRepository<T> where T : class, new()
         string? orderBy = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Insere o registro. A chave auto-numerada gerada pelo servidor é preenchida no próprio objeto.
+    /// </summary>
     Task<T?> CreateAsync(T entity, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Insere vários registros numa única chamada. Devolve os registros gravados, com as chaves geradas.
+    /// Insere vários registros numa única chamada. Devolve os registros gravados e preenche as chaves geradas nos objetos.
     /// </summary>
     Task<List<T>> CreateManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Atualiza só os campos informados (<c>u =&gt; u.Set(x =&gt; x.Campo).Clear(x =&gt; x.Outro)</c>), mais a chave.
+    /// </summary>
+    Task<T?> UpdateAsync(T entity, Action<UpdateFields<T>> fields, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atualiza só o que mudou: se o objeto foi registrado com <see cref="Track"/>, manda as diferenças desde então
+    /// (valor que virou <c>null</c> vai apagado); senão, usa o estado dos campos <see cref="NullableState{T}"/>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">O objeto não é rastreado e o modelo não tem campos <see cref="NullableState{T}"/>.</exception>
     Task<T?> UpdateAsync(T entity, CancellationToken cancellationToken = default);
 
+    /// <summary>Como <see cref="UpdateAsync(T, CancellationToken)"/>, para vários registros numa chamada.</summary>
     Task<List<T>> UpdateManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atualiza todos os campos mapeados (valor nulo vai apagado). Sobrescreve o que outros mudaram no servidor.
+    /// </summary>
+    Task<T?> UpdateAllAsync(T entity, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Guarda uma cópia dos valores atuais do objeto, para o <see cref="UpdateAsync(T, CancellationToken)"/> mandar só o que mudar depois.
+    /// </summary>
+    T Track(T entity);
 
     Task DeleteAsync(T entity, CancellationToken cancellationToken = default);
 
     Task DeleteManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default);
 }
 
-internal sealed class SankhyaRepository<T>(ISankhyaTransport transport, ISankhyaSession session, string entityName)
-    : ISankhyaRepository<T>
-    where T : class, new()
+internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : class, new()
 {
-    public string EntityName { get; } = entityName;
+    private static readonly ConditionalWeakTable<object, Dictionary<string, object?>> Snapshots = new();
+
+    private readonly ISankhyaTransport _transport;
+    private readonly ISankhyaSession _session;
+    private readonly EntityMap _map;
+
+    public SankhyaRepository(ISankhyaTransport transport, ISankhyaSession session, string? entityName = null)
+    {
+        _transport = transport;
+        _session = session;
+        _map = SankhyaMaps.For(typeof(T));
+        EntityName = entityName ?? _map.EntityName
+                  ?? throw new InvalidOperationException(
+                         $"Informe o nome da entidade de {typeof(T).Name}: Entity(\"...\") no mapa, [SankhyaEntity(\"...\")] no modelo ou Repository<T>(\"...\").");
+    }
+
+    public string EntityName { get; }
 
     public Task<List<T>> FindAsync(string expression, CancellationToken cancellationToken = default) =>
         LoadAsync(expression, null, null, cancellationToken);
@@ -82,55 +147,133 @@ internal sealed class SankhyaRepository<T>(ISankhyaTransport transport, ISankhya
     {
         ArgumentOutOfRangeException.ThrowIfNegative(page);
 
-        var body = EntityXml.LoadRecords<T>(EntityName, expression, parameters?.ToList(), orderBy, page).ToList();
-        SankhyaXmlResponse response = await session.ExecuteAsync(
-            (id, ct) => transport.SendXmlAsync(SankhyaServices.LoadRecords, body, id, idempotent: true, ct),
-            cancellationToken);
+        var body = EntityXml.LoadRecords(_map, EntityName, expression, parameters?.ToList(), orderBy, page).ToList();
+        SankhyaXmlResponse response = await SendAsync(SankhyaServices.LoadRecords, body, idempotent: true, cancellationToken);
 
-        (List<T> items, bool hasMore) = EntityXml.ReadEntities<T>(response.ResponseBody);
+        (List<T> items, bool hasMore) = EntityXml.ReadEntities<T>(_map, response.ResponseBody);
         return new SankhyaPage<T>(items, page, hasMore);
     }
 
     public async Task<T?> CreateAsync(T entity, CancellationToken cancellationToken = default) =>
         (await CreateManyAsync([entity], cancellationToken)).FirstOrDefault();
 
-    public Task<List<T>> CreateManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default) =>
-        SaveAsync(EntityXml.Insert(EntityName, entities.ToList()), cancellationToken);
+    public async Task<List<T>> CreateManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default)
+    {
+        List<T> list = entities.ToList();
+        List<T> saved = await SaveAsync(EntityXml.Insert(_map, EntityName, list), cancellationToken);
+        CopyGeneratedKeys(list, saved);
+        return saved;
+    }
+
+    public async Task<T?> UpdateAsync(T entity, Action<UpdateFields<T>> fields, CancellationToken cancellationToken = default)
+    {
+        var spec = new UpdateFields<T>();
+        fields(spec);
+        var selected = spec.Fields.Select(f => new UpdateField(Member(f.Member), f.Clear)).ToList();
+
+        List<T> saved = await SaveAsync(EntityXml.Update(_map, EntityName, [entity], _ => selected), cancellationToken);
+        Retrack(entity);
+        return saved.FirstOrDefault();
+    }
 
     public async Task<T?> UpdateAsync(T entity, CancellationToken cancellationToken = default) =>
         (await UpdateManyAsync([entity], cancellationToken)).FirstOrDefault();
 
-    public Task<List<T>> UpdateManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default) =>
-        SaveAsync(EntityXml.Update(EntityName, entities.ToList()), cancellationToken);
+    public async Task<List<T>> UpdateManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default)
+    {
+        List<T> list = entities.ToList();
+        List<T> saved = await SaveAsync(EntityXml.Update(_map, EntityName, list.Cast<object>().ToList(), ChangedFields), cancellationToken);
+        foreach (T entity in list) Retrack(entity);
+        return saved;
+    }
+
+    public async Task<T?> UpdateAllAsync(T entity, CancellationToken cancellationToken = default)
+    {
+        List<T> saved = await SaveAsync(
+            EntityXml.Update(_map, EntityName, [entity], e => _map.Members.Where(m => m.Writable).Select(m => new UpdateField(m, m.Value(e) == null))),
+            cancellationToken);
+        Retrack(entity);
+        return saved.FirstOrDefault();
+    }
+
+    public T Track(T entity)
+    {
+        Snapshots.AddOrUpdate(entity, Snapshot(entity));
+        return entity;
+    }
 
     public Task DeleteAsync(T entity, CancellationToken cancellationToken = default) =>
         DeleteManyAsync([entity], cancellationToken);
 
     public async Task DeleteManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default)
     {
-        var body = EntityXml.Remove(EntityName, entities.ToList()).ToList();
-        await session.ExecuteAsync(
-            (id, ct) => transport.SendXmlAsync(SankhyaServices.RemoveRecord, body, id, idempotent: false, ct),
-            cancellationToken);
+        var body = EntityXml.Remove(_map, EntityName, entities.Cast<object>().ToList()).ToList();
+        await SendAsync(SankhyaServices.RemoveRecord, body, idempotent: false, cancellationToken);
+    }
+
+    private IEnumerable<UpdateField> ChangedFields(object entity)
+    {
+        if (Snapshots.TryGetValue(entity, out Dictionary<string, object?>? snapshot))
+        {
+            foreach (MemberMap member in _map.Members.Where(m => m.Writable && !m.IsKey))
+            {
+                object? current = member.Value(entity);
+                if (!Equals(snapshot.GetValueOrDefault(member.Name), current))
+                    yield return new UpdateField(member, current == null);
+            }
+
+            yield break;
+        }
+
+        if (!_map.Members.Any(m => m.NullableState != null))
+            throw new InvalidOperationException(
+                $"Para atualizar {typeof(T).Name}, informe os campos (UpdateAsync(entidade, u => u.Set(...))), "
+              + "registre o objeto com Track antes de alterá-lo ou use UpdateAllAsync.");
+
+        foreach (MemberMap member in _map.Members.Where(m => m.Writable && m.NullableState != null))
+        {
+            EPropertyState state = member.State(entity);
+            if (state != EPropertyState.UnSet) yield return new UpdateField(member, state == EPropertyState.Clear);
+        }
+    }
+
+    private void Retrack(T entity)
+    {
+        if (Snapshots.TryGetValue(entity, out _)) Track(entity);
+    }
+
+    private Dictionary<string, object?> Snapshot(object entity) =>
+        _map.Members.Where(m => m.Writable && !m.IsKey).ToDictionary(m => m.Name, m => m.Value(entity));
+
+    private MemberMap Member(string name) =>
+        _map.Members.FirstOrDefault(m => m.Name == name)
+     ?? throw new ArgumentException($"A propriedade {typeof(T).Name}.{name} não está mapeada.", nameof(name));
+
+    private void CopyGeneratedKeys(List<T> sent, List<T> saved)
+    {
+        MemberMap? auto = _map.Keys.FirstOrDefault(k => k.AutoNumbered);
+        if (auto?.Set == null || saved.Count != sent.Count) return;
+
+        for (int i = 0; i < sent.Count; i++)
+        {
+            object? generated = auto.Value(saved[i]);
+            if (generated != null) auto.Assign(sent[i], generated);
+        }
     }
 
     private async Task<List<T>> LoadAsync(string expression, IReadOnlyList<Parameter>? parameters, string? orderBy, CancellationToken cancellationToken)
     {
-        var body = EntityXml.LoadRecords<T>(EntityName, expression, parameters, orderBy, null).ToList();
-        SankhyaXmlResponse response = await session.ExecuteAsync(
-            (id, ct) => transport.SendXmlAsync(SankhyaServices.LoadRecords, body, id, idempotent: true, ct),
-            cancellationToken);
-
-        return EntityXml.ReadEntities<T>(response.ResponseBody).Items;
+        var body = EntityXml.LoadRecords(_map, EntityName, expression, parameters, orderBy, null).ToList();
+        SankhyaXmlResponse response = await SendAsync(SankhyaServices.LoadRecords, body, idempotent: true, cancellationToken);
+        return EntityXml.ReadEntities<T>(_map, response.ResponseBody).Items;
     }
 
-    private async Task<List<T>> SaveAsync(IEnumerable<System.Xml.Linq.XElement> body, CancellationToken cancellationToken)
+    private async Task<List<T>> SaveAsync(IEnumerable<XElement> body, CancellationToken cancellationToken)
     {
-        var elements = body.ToList();
-        SankhyaXmlResponse response = await session.ExecuteAsync(
-            (id, ct) => transport.SendXmlAsync(SankhyaServices.SaveRecord, elements, id, idempotent: false, ct),
-            cancellationToken);
-
-        return EntityXml.ReadEntities<T>(response.ResponseBody).Items;
+        SankhyaXmlResponse response = await SendAsync(SankhyaServices.SaveRecord, body.ToList(), idempotent: false, cancellationToken);
+        return EntityXml.ReadEntities<T>(_map, response.ResponseBody).Items;
     }
+
+    private Task<SankhyaXmlResponse> SendAsync(string service, List<XElement> body, bool idempotent, CancellationToken cancellationToken) =>
+        _session.ExecuteAsync((id, ct) => _transport.SendXmlAsync(service, body, id, idempotent, ct), cancellationToken);
 }

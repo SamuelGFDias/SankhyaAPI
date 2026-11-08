@@ -17,6 +17,16 @@ Versão com quebra de API, sem camada de compatibilidade com a 5.x. O guia de mi
 - **Target frameworks** `net8.0` e `net10.0`. Saem as dependências Refit, Refit.Xml, Refit.HttpClientFactory, Azure.Core e Swashbuckle.
 - `SankhyaTruncatedResultException` para o corte de 5000 linhas do executeQuery.
 
+### Mapa e modelo (P2)
+
+- **Mapa fluente por modelo** (#24): `SankhyaEntityMap<T>` com `Entity`, `Key(...).AutoNumbered()`, `Property(...)` (com `.Options(...)` e `.ReadOnly()`), `Computed(...)` (um campo do domínio em várias colunas, com `.Writes(coluna, SankhyaType)` e leitura composta explícita por `.Reads(...)`), `Joined(...)` (campo de entidade ligada, `<entity path>`) e `Presentation(...)` (campos de apresentação). O domínio fica sem atributos nem tipos do pacote. Registre com `SankhyaMaps.Register<TMap>()` ou `AddEntity<T, TMap>()`.
+- **Conversores nomeados** `SankhyaType` (Text, Integer, Decimal, Date, DateTime, Time em HHMM, YesNo, Options) e `ISankhyaConverter<T>` para tipos próprios. Nenhuma conversão depende da cultura da máquina.
+- **Atributos como alternativa**: `[SankhyaEntity]`, `[Key]`, `[XmlElement]` e `[SankhyaPresentation]` produzem o mesmo mapa (paridade de envelope testada byte a byte).
+- **Chave composta** com no máximo um campo auto-numerado, validada na montagem do mapa (#26). No insert, a chave gerada é preenchida no próprio objeto.
+- **Update parcial em três modos** (#25): campos explícitos (`UpdateAsync(e, u => u.Set(x => x.A).Clear(x => x.B))`), rastreamento por cópia (`Track(e)` + `UpdateAsync(e)`) e `NullableState<T>` no modelo. `UpdateAllAsync` manda tudo, só quando pedido.
+- **`NullableState<T>` imutável** (#16): `readonly struct` com `Set(v)`, `Clear()`, `Unset`; JSON pelo valor puro.
+- `Repository<T>()` resolve o nome da entidade pelo mapa ou por `[SankhyaEntity]`. `SankhyaModelBase` deixa de existir.
+
 ## 5.2.0
 
 Correções da auditoria (entrega A de `docs/plano-correcao.md`). Nenhuma assinatura pública mudou, mas há mudanças de comportamento, marcadas com ⚠.
