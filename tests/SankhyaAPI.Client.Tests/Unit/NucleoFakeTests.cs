@@ -71,6 +71,20 @@ public class NucleoFakeTests : IDisposable
     }
 
     [Fact]
+    public async Task Sessao_compartilhada_expirada_repete_a_chamada_com_o_id_da_sessao_nova()
+    {
+        _fake.WithLoginSequence("SESSAO-VELHA", "SESSAO-NOVA");
+        _fake.WithSessionExpiredOnce(Load, ["0", "SUP"]);
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.Shared);
+
+        Assert.Single(await cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1"));
+
+        string[] cookies = _fake.Calls(Load).Select(c => c.RequestMessage!.Headers!["Cookie"].Single()).ToArray();
+        Assert.Equal(["JSESSIONID=SESSAO-VELHA", "JSESSIONID=SESSAO-NOVA"], cookies);
+        Assert.Equal(["SESSAO-NOVA"], ((SankhyaAPI.Client.Session.SankhyaSession)cliente.Session).PooledSessionIds);
+    }
+
+    [Fact]
     public async Task Sessao_que_expira_de_novo_na_repeticao_propaga_o_erro()
     {
         _fake.WithStatus(Load, "3", $"<statusMessage><![CDATA[{SankhyaFakeServer.Base64("Não autorizado.")}]]></statusMessage>");

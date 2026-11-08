@@ -72,6 +72,9 @@ internal sealed class SankhyaSession : ISankhyaSession, IDisposable
 
     public SessionMode Mode => _options.SessionMode;
 
+    /// <summary>Ids das sessões abertas no pool (para testes).</summary>
+    internal IReadOnlyCollection<string> PooledSessionIds => _open.Keys.ToList();
+
     public async Task<SankhyaSessionInfo> LoginAsync(CancellationToken cancellationToken = default)
     {
         await _explicitLock.WaitAsync(cancellationToken);
