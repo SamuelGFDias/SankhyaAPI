@@ -1,5 +1,4 @@
 using SankhyaAPI.Client.Exceptions;
-using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Unit;
@@ -13,12 +12,12 @@ public class QueryFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ISankhyaSql Sql() => _fake.Cliente().Sql;
+    private ISankhyaSql Sql() => _fake.CreateClient().Sql;
 
     [Fact]
     public async Task QueryRawAsync_mapeia_colunas_pelo_nome()
     {
-        _fake.ComQuery(Metadata, """[[0,"SUP"],[1,"JOÃO"]]""");
+        _fake.WithQuery(Metadata, """[[0,"SUP"],[1,"JOÃO"]]""");
 
         List<UsuarioLinha> linhas = await Sql().QueryRawAsync<UsuarioLinha>("SELECT CODUSU, NOMEUSU FROM TSIUSU");
 
@@ -26,7 +25,7 @@ public class QueryFakeTests : IDisposable
         Assert.Equal(0, linhas[0].CodUsu);
         Assert.Equal("JOÃO", linhas[1].NomeUsu);
 
-        string body = _fake.Chamadas("DbExplorerSP.executeQuery").Single().RequestMessage!.Body!;
+        string body = _fake.Calls("DbExplorerSP.executeQuery").Single().RequestMessage!.Body!;
         Assert.Contains("\"sql\":\"SELECT CODUSU, NOMEUSU FROM TSIUSU\"", body);
     }
 
@@ -36,7 +35,7 @@ public class QueryFakeTests : IDisposable
         // fieldsMetadata fora de ordem: o nome da coluna tem que acompanhar o seu "order".
         const string desordenado =
             """[{"name":"NOMEUSU","description":"NOMEUSU","order":2,"userType":"S"},{"name":"CODUSU","description":"CODUSU","order":1,"userType":"I"}]""";
-        _fake.ComQuery(desordenado, """[[0,"SUP"]]""");
+        _fake.WithQuery(desordenado, """[[0,"SUP"]]""");
 
         UsuarioLinha linha = (await Sql().QueryRawAsync<UsuarioLinha>("SELECT ...")).Single();
 
@@ -49,7 +48,7 @@ public class QueryFakeTests : IDisposable
     {
         const string desordenado =
             """[{"name":"NOMEUSU","description":"NOMEUSU","order":2,"userType":"S"},{"name":"CODUSU","description":"CODUSU","order":1,"userType":"I"}]""";
-        _fake.ComQuery(desordenado, """[[0,"SUP"]]""");
+        _fake.WithQuery(desordenado, """[[0,"SUP"]]""");
 
         Dictionary<string, object?> linha = (await Sql().QueryAsDictionaryAsync("SELECT ...")).Single();
 
@@ -62,7 +61,7 @@ public class QueryFakeTests : IDisposable
     {
         const string repetido =
             """[{"name":"CODUSU","description":"CODUSU","order":1,"userType":"I"},{"name":"CODUSU","description":"CODUSU","order":2,"userType":"I"}]""";
-        _fake.ComQuery(repetido, """[[0,1]]""");
+        _fake.WithQuery(repetido, """[[0,1]]""");
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Sql().QueryAsDictionaryAsync("SELECT ..."));
 
@@ -72,7 +71,7 @@ public class QueryFakeTests : IDisposable
     [Fact]
     public async Task QueryAsDictionaryAsync_retorna_tipos_do_dotnet_e_nao_JsonElement()
     {
-        _fake.ComQuery(Metadata, """[[0,"SUP  "]]""");
+        _fake.WithQuery(Metadata, """[[0,"SUP  "]]""");
 
         Dictionary<string, object?> linha = (await Sql().QueryAsDictionaryAsync("SELECT ...")).Single();
 
@@ -84,7 +83,7 @@ public class QueryFakeTests : IDisposable
     [Fact]
     public async Task Resultado_cortado_no_limite_do_servidor_lanca_em_vez_de_vir_incompleto()
     {
-        _fake.ComQuery(Metadata, """[[0,"SUP"]]""", burstLimit: true);
+        _fake.WithQuery(Metadata, """[[0,"SUP"]]""", burstLimit: true);
 
         var ex = await Assert.ThrowsAsync<SankhyaTruncatedResultException>(() => Sql().QueryRawAsync<UsuarioLinha>("SELECT ..."));
 
@@ -95,7 +94,7 @@ public class QueryFakeTests : IDisposable
     [Fact]
     public async Task Erro_de_SQL_mostra_a_mensagem_do_servidor()
     {
-        _fake.ComQueryErro("ORA-00942: table or view does not exist");
+        _fake.WithQueryError("ORA-00942: table or view does not exist");
 
         var ex = await Assert.ThrowsAsync<SankhyaException>(() => Sql().QueryAsDictionaryAsync("SELECT * FROM NAO_EXISTE"));
 

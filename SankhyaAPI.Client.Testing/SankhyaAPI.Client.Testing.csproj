@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+		<TargetFrameworks Condition="'$(SankhyaSoNet8)' == 'true'">net8.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<Title>SankhyaAPI.Client.Testing</Title>
+		<Description>Servidor fake do Sankhya (WireMock) e utilitários de teste para integrações com o SankhyaAPI.Client, sem precisar de um Sankhya real.</Description>
+		<Authors>samueldias21</Authors>
+		<Version>6.0.0</Version>
+		<PackageId>SankhyaAPI.Client.Testing</PackageId>
+		<PackageRequireLicenseAcceptance>False</PackageRequireLicenseAcceptance>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+		<GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+		<RepositoryType>git</RepositoryType>
+		<RepositoryUrl>https://github.com/SamuelGFDias/SankhyaAPI</RepositoryUrl>
+		<PackageTags>Sankhya;ERP;Integracao;Testes;Fake</PackageTags>
+		<NeutralLanguage>pt-BR</NeutralLanguage>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="WireMock.Net" Version="2.21.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\SankhyaAPI.Client\SankhyaAPI.Client.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<None Update="LICENSE.txt">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+
+</Project>

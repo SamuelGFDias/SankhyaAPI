@@ -1,6 +1,6 @@
 name: Publish NuGet
 
-# Publica o pacote SankhyaAPI.Client no nuget.org quando uma tag vX.Y.Z é enviada.
+# Publica os pacotes SankhyaAPI.Client e SankhyaAPI.Client.Testing no nuget.org quando uma tag vX.Y.Z é enviada.
 # A tag precisa apontar para um commit que já está na main.
 on:
   push:
@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 env:
-  PROJECT: SankhyaAPI.Client/SankhyaAPI.Client.csproj
+  # O generator vai dentro do pacote do cliente; o Testing é publicado à parte.
+  PROJECTS: SankhyaAPI.Client/SankhyaAPI.Client.csproj SankhyaAPI.Client.Testing/SankhyaAPI.Client.Testing.csproj
   NUGET_SOURCE: https://api.nuget.org/v3/index.json
 
 jobs:
@@ -54,7 +55,10 @@ jobs:
         run: dotnet test --configuration Release --no-build
 
       - name: Pack
-        run: dotnet pack "$PROJECT" --configuration Release --no-build -p:Version=${{ steps.version.outputs.version }} --output ./artifacts
+        run: |
+          for p in $PROJECTS; do
+            dotnet pack "$p" --configuration Release --no-build -p:Version=${{ steps.version.outputs.version }} --output ./artifacts
+          done
 
       - name: Publicar no nuget.org
         env:

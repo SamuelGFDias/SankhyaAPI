@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using SankhyaAPI.Client.Diagnostics;
 using SankhyaAPI.Client.Exceptions;
 using SankhyaAPI.Client.Reports;
-using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Unit;
@@ -29,64 +28,64 @@ public class NucleoFakeTests : IDisposable
     [Fact]
     public async Task Sessao_compartilhada_faz_um_login_para_varias_operacoes_e_logout_no_dispose()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
+        _fake.WithEntities(Load, ["0", "SUP"]);
 
-        await using (SankhyaClient cliente = _fake.Cliente(SessionMode.Shared))
+        await using (SankhyaClient cliente = _fake.CreateClient(SessionMode.Shared))
         {
             var usuarios = cliente.Repository<Usuario>("Usuario");
             await usuarios.FindAsync("1 = 1");
             await usuarios.FindAsync("1 = 1");
             await usuarios.FindAsync("1 = 1");
 
-            Assert.Single(_fake.Chamadas(Login));
-            Assert.Empty(_fake.Chamadas(Logout));
+            Assert.Single(_fake.Calls(Login));
+            Assert.Empty(_fake.Calls(Logout));
         }
 
-        Assert.Single(_fake.Chamadas(Logout));
+        Assert.Single(_fake.Calls(Logout));
     }
 
     [Fact]
     public async Task Sessao_compartilhada_com_chamadas_concorrentes_abre_no_maximo_MaxSessions()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
-        await using SankhyaClient cliente = _fake.Cliente(SessionMode.Shared);
+        _fake.WithEntities(Load, ["0", "SUP"]);
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.Shared);
         var usuarios = cliente.Repository<Usuario>("Usuario");
 
         await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => usuarios.FindAsync("1 = 1")));
 
-        Assert.InRange(_fake.Chamadas(Login).Count, 1, 4);
-        Assert.Equal(20, _fake.Chamadas(Load).Count);
+        Assert.InRange(_fake.Calls(Login).Count, 1, 4);
+        Assert.Equal(20, _fake.Calls(Load).Count);
     }
 
     [Fact]
     public async Task Sessao_expirada_e_renovada_e_a_operacao_repetida_uma_vez()
     {
-        _fake.ComSessaoExpiradaUmaVez(Load, ["0", "SUP"]);
-        await using SankhyaClient cliente = _fake.Cliente(SessionMode.Shared);
+        _fake.WithSessionExpiredOnce(Load, ["0", "SUP"]);
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.Shared);
 
         Usuario sup = (await cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1")).Single();
 
         Assert.Equal("SUP", sup.NomeUsu.Value);
-        Assert.Equal(2, _fake.Chamadas(Login).Count);
-        Assert.Equal(2, _fake.Chamadas(Load).Count);
+        Assert.Equal(2, _fake.Calls(Login).Count);
+        Assert.Equal(2, _fake.Calls(Load).Count);
     }
 
     [Fact]
     public async Task Sessao_que_expira_de_novo_na_repeticao_propaga_o_erro()
     {
-        _fake.ComStatus(Load, "3", $"<statusMessage><![CDATA[{SankhyaFakeServer.Base64("Não autorizado.")}]]></statusMessage>");
-        await using SankhyaClient cliente = _fake.Cliente(SessionMode.Shared);
+        _fake.WithStatus(Load, "3", $"<statusMessage><![CDATA[{SankhyaFakeServer.Base64("Não autorizado.")}]]></statusMessage>");
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.Shared);
 
         await Assert.ThrowsAsync<SankhyaSessionExpiredException>(() => cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1"));
 
-        Assert.Equal(2, _fake.Chamadas(Load).Count);
+        Assert.Equal(2, _fake.Calls(Load).Count);
     }
 
     [Fact]
     public async Task Login_explicito_e_usado_por_todas_as_operacoes_ate_o_logout()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
-        await using SankhyaClient cliente = _fake.Cliente(SessionMode.PerOperation);
+        _fake.WithEntities(Load, ["0", "SUP"]);
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.PerOperation);
 
         var sessao = await cliente.Session.LoginAsync();
         await cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1");
@@ -95,42 +94,42 @@ public class NucleoFakeTests : IDisposable
 
         Assert.Equal(SankhyaFakeServer.SessionId, sessao.SessionId);
         Assert.Equal(0, sessao.UserCode);
-        Assert.Single(_fake.Chamadas(Login));
-        Assert.Single(_fake.Chamadas(Logout));
+        Assert.Single(_fake.Calls(Login));
+        Assert.Single(_fake.Calls(Logout));
     }
 
     [Fact]
     public async Task Nenhuma_chamada_leva_cookie_alem_do_JSESSIONID_da_sessao()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
-        await using SankhyaClient cliente = _fake.Cliente(SessionMode.PerOperation);
+        _fake.WithEntities(Load, ["0", "SUP"]);
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.PerOperation);
 
         await cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1");
 
-        Assert.False(_fake.Chamadas(Login).Single().RequestMessage!.Headers!.ContainsKey("Cookie"));
-        Assert.Equal($"JSESSIONID={SankhyaFakeServer.SessionId}", _fake.Chamadas(Load).Single().RequestMessage!.Headers!["Cookie"].Single());
+        Assert.False(_fake.Calls(Login).Single().RequestMessage!.Headers!.ContainsKey("Cookie"));
+        Assert.Equal($"JSESSIONID={SankhyaFakeServer.SessionId}", _fake.Calls(Load).Single().RequestMessage!.Headers!["Cookie"].Single());
     }
 
     [Fact]
     public async Task Falha_transitoria_e_repetida_so_em_operacao_idempotente()
     {
-        _fake.ComStatusHttp(Load, 503);
-        _fake.ComStatusHttp(Save, 503);
-        await using SankhyaClient cliente = _fake.Cliente(SessionMode.PerOperation, maxRetries: 2);
+        _fake.WithHttpStatus(Load, 503);
+        _fake.WithHttpStatus(Save, 503);
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.PerOperation, maxRetries: 2);
         var produtos = cliente.Repository<Produto>("Produto");
 
         await Assert.ThrowsAsync<HttpRequestException>(() => produtos.FindAsync("1 = 1"));
         await Assert.ThrowsAsync<HttpRequestException>(() => produtos.UpdateAsync(new Produto { CodProd = 1, DescrProd = "X" }));
 
-        Assert.Equal(3, _fake.Chamadas(Load).Count);
-        Assert.Single(_fake.Chamadas(Save));
+        Assert.Equal(3, _fake.Calls(Load).Count);
+        Assert.Single(_fake.Calls(Save));
     }
 
     [Fact]
     public async Task Cancelamento_interrompe_a_chamada()
     {
-        _fake.ComAtraso(Load, TimeSpan.FromSeconds(3));
-        await using SankhyaClient cliente = _fake.Cliente(SessionMode.PerOperation);
+        _fake.WithDelay(Load, TimeSpan.FromSeconds(3));
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.PerOperation);
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
 
         var relogio = Stopwatch.StartNew();
@@ -142,7 +141,7 @@ public class NucleoFakeTests : IDisposable
     [Fact]
     public async Task Timeout_da_configuracao_vira_HttpRequestException()
     {
-        _fake.ComAtraso(Load, TimeSpan.FromSeconds(3));
+        _fake.WithDelay(Load, TimeSpan.FromSeconds(3));
         await using SankhyaClient cliente = SankhyaClient.Create(new SankhyaClientOptions
         {
             BaseUrl = _fake.BaseUrl, Usuario = "u", Senha = "s", AllowHttp = true, SessionMode = SessionMode.PerOperation,
@@ -170,7 +169,7 @@ public class NucleoFakeTests : IDisposable
     [Fact]
     public async Task Injecao_de_dependencia_resolve_e_valida_as_opcoes()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
+        _fake.WithEntities(Load, ["0", "SUP"]);
         var services = new ServiceCollection();
         services.AddSankhya(o =>
                 {
@@ -198,8 +197,8 @@ public class NucleoFakeTests : IDisposable
     public async Task Relatorio_gera_e_baixa_na_mesma_sessao_com_os_metadados()
     {
         byte[] pdf = Encoding.ASCII.GetBytes("%PDF-1.4 fake");
-        _fake.ComRelatorio("CHAVE123", pdf);
-        await using SankhyaClient cliente = _fake.Cliente(SessionMode.PerOperation);
+        _fake.WithReport("CHAVE123", pdf);
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.PerOperation);
 
         await using SankhyaReportFile arquivo = await cliente.Reports.GenerateAsync(
             42,
@@ -212,18 +211,18 @@ public class NucleoFakeTests : IDisposable
         Assert.True(arquivo.CanExport);
         Assert.False(arquivo.CanSendByEmail);
 
-        string body = _fake.Chamadas("VisualizadorRelatorios.visualizarRelatorio").Single().RequestMessage!.Body!;
+        string body = _fake.Calls("VisualizadorRelatorios.visualizarRelatorio").Single().RequestMessage!.Body!;
         Assert.Contains("nuRfe=\"42\"", body);
         Assert.Contains("nome=\"CODEMP\"", body);
-        Assert.Single(_fake.Chamadas(Login));
-        Assert.Single(_fake.Chamadas(Logout));
+        Assert.Single(_fake.Calls(Login));
+        Assert.Single(_fake.Calls(Logout));
     }
 
     [Fact]
     public async Task Logs_e_tracing_nao_carregam_valores_de_campo_nem_parametros()
     {
         const string segredo = "CPF-123.456.789-00";
-        _fake.ComEntidades(Load, ["0", "SUP"]);
+        _fake.WithEntities(Load, ["0", "SUP"]);
         var logs = new ListaDeLogs();
         using var listener = new ActivityListener
         {
