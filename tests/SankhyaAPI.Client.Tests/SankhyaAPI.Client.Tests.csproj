@@ -2,6 +2,8 @@
 
 	<PropertyGroup>
 		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+		<!-- SDK 8 não conhece net10.0: o gate roda net8.0 com SankhyaSoNet8=true. -->
+		<TargetFrameworks Condition="'$(SankhyaSoNet8)' == 'true'">net8.0</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<IsPackable>false</IsPackable>
@@ -23,6 +25,7 @@
 		<Using Include="SankhyaAPI.Client.Mapping" />
 		<Using Include="SankhyaAPI.Client.Sql" />
 		<ProjectReference Include="..\..\SankhyaAPI.Client\SankhyaAPI.Client.csproj" />
+		<ProjectReference Include="..\..\SankhyaAPI.Client.Generators\SankhyaAPI.Client.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
 </Project>

@@ -39,7 +39,7 @@ internal sealed class MemberMap
     public object? DefaultValue { get; init; }
 
     /// <summary>Acesso ao estado quando o membro é <see cref="NullableState{T}"/>.</summary>
-    public INullableStateAccessor? NullableState { get; init; }
+    public NullableStateAccessor? NullableState { get; init; }
 
     public bool Writable => Writes.Count > 0;
 
@@ -78,6 +78,8 @@ internal sealed class MemberMap
     public void Assign(object entity, object? value)
     {
         if (Set == null) return;
+        // Coluna vazia num tipo de valor não anulável (DefaultValue não nulo): fica o valor padrão.
+        if (value == null && DefaultValue != null) return;
         Set(entity, NullableState != null ? NullableState.Create(value, value == null ? EPropertyState.UnSet : EPropertyState.Set) : value);
     }
 }

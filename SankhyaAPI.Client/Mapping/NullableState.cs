@@ -24,8 +24,20 @@ public enum EPropertyState
 /// apagar ou <c>default</c>/<see cref="Unset"/> para não mexer.
 /// </summary>
 [JsonConverter(typeof(NullableStateJsonConverterFactory))]
-public readonly struct NullableState<T> : IEquatable<NullableState<T>>
+public readonly struct NullableState<T> : IEquatable<NullableState<T>>, INullableStateValue
 {
+    EPropertyState INullableStateValue.State => State;
+
+    object? INullableStateValue.BoxedValue => Value;
+
+    object INullableStateValue.Create(object? value, EPropertyState state) =>
+        state switch
+        {
+            EPropertyState.Set => Set((T)value!),
+            EPropertyState.Clear => Clear(),
+            _ => Unset
+        };
+
     private NullableState(T? value, EPropertyState state)
     {
         Value = value;
@@ -70,30 +82,23 @@ public readonly struct NullableState<T> : IEquatable<NullableState<T>>
 }
 
 /// <summary>
-/// Leitura do estado de um <see cref="NullableState{T}"/> sem conhecer o <c>T</c>.
+/// Acesso a um <see cref="NullableState{T}"/> encaixotado sem conhecer o <c>T</c> (e sem reflexão).
 /// </summary>
-internal interface INullableStateAccessor
+internal interface INullableStateValue
 {
-    EPropertyState State(object boxed);
-    object? Value(object boxed);
+    EPropertyState State { get; }
+    object? BoxedValue { get; }
     object Create(object? value, EPropertyState state);
 }
 
-internal sealed class NullableStateAccessor<T> : INullableStateAccessor
+/// <summary>
+/// Leitura e criação de <see cref="NullableState{T}"/> a partir de um protótipo (<c>default</c> encaixotado).
+/// </summary>
+internal sealed class NullableStateAccessor(INullableStateValue prototype)
 {
-    public static readonly NullableStateAccessor<T> Instance = new();
-
-    public EPropertyState State(object boxed) => ((NullableState<T>)boxed).State;
-
-    public object? Value(object boxed) => ((NullableState<T>)boxed).Value;
-
-    public object Create(object? value, EPropertyState state) =>
-        state switch
-        {
-            EPropertyState.Set => NullableState<T>.Set((T)value!),
-            EPropertyState.Clear => NullableState<T>.Clear(),
-            _ => NullableState<T>.Unset
-        };
+    public EPropertyState State(object boxed) => ((INullableStateValue)boxed).State;
+    public object? Value(object boxed) => ((INullableStateValue)boxed).BoxedValue;
+    public object Create(object? value, EPropertyState state) => prototype.Create(value, state);
 }
 
 /// <summary>
@@ -113,11 +118,15 @@ public sealed class NullableStateJsonConverterFactory : JsonConverterFactory
 
 public sealed class NullableStateJsonConverter<T> : JsonConverter<NullableState<T>>
 {
+    // GetTypeInfo respeita o resolvedor configurado (source generation em AOT).
     public override NullableState<T> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         reader.TokenType == JsonTokenType.Null
             ? NullableState<T>.Clear()
-            : NullableState<T>.Set(JsonSerializer.Deserialize<T>(ref reader, options)!);
+            : NullableState<T>.Set(JsonSerializer.Deserialize(ref reader, (System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>)options.GetTypeInfo(typeof(T)))!);
 
-    public override void Write(Utf8JsonWriter writer, NullableState<T> value, JsonSerializerOptions options) =>
-        JsonSerializer.Serialize(writer, value.Value, options);
+    public override void Write(Utf8JsonWriter writer, NullableState<T> value, JsonSerializerOptions options)
+    {
+        if (value.Value is null) writer.WriteNullValue();
+        else JsonSerializer.Serialize(writer, value.Value, (System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>)options.GetTypeInfo(typeof(T)));
+    }
 }

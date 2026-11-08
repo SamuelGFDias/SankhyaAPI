@@ -129,6 +129,13 @@ public class MapaFluenteFakeTests : IDisposable
     }
 
     [Fact]
+    public void Modelos_do_projeto_usam_os_acessores_gerados_pelo_source_generator()
+    {
+        Assert.True(SankhyaAccessorRegistry.IsGenerated(typeof(OrdemServico)));
+        Assert.True(SankhyaAccessorRegistry.IsGenerated(typeof(Produto)));
+    }
+
+    [Fact]
     public void Mapa_com_dois_campos_auto_numerados_na_chave_e_rejeitado()
     {
         var ex = Assert.Throws<InvalidOperationException>(() => new DuasAutoMap().Compilar());
@@ -197,6 +204,9 @@ public class MapaFluenteFakeTests : IDisposable
         public int B { get; set; }
     }
 
+    // Mapas inválidos de propósito: os testes conferem a rejeição em tempo de execução; os analisadores SNK001 e
+    // SNK002 já os acusam na compilação.
+#pragma warning disable SNK001, SNK002
     private sealed class DuasAutoMap : SankhyaEntityMap<DuasAuto>
     {
         public DuasAutoMap()
@@ -216,6 +226,7 @@ public class MapaFluenteFakeTests : IDisposable
             Property(x => x.B, "A");
         }
     }
+#pragma warning restore SNK001, SNK002
 }
 
 internal static class MapaTestExtensions

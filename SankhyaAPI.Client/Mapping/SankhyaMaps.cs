@@ -50,9 +50,11 @@ internal static class AttributeMaps
     [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Mapa por atributos usa reflexão por definição; o caminho AOT é o mapa fluente com o generator.")]
     [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Idem.")]
     [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Idem.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "Idem; com o generator, a criação vem do acessor gerado.")]
     public static EntityMap Build(Type type, bool rowMode)
     {
         var members = new List<MemberMap>();
+        bool generated = SankhyaAccessorRegistry.TryGet(type, out Func<object> create, out IReadOnlyDictionary<string, SankhyaPropertyAccessor> accessors);
 
         foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -73,10 +75,10 @@ internal static class AttributeMaps
             {
                 Name = property.Name,
                 Type = propertyType,
-                Get = property.GetValue,
-                Set = property.CanWrite ? property.SetValue : null,
+                Get = generated && accessors.TryGetValue(property.Name, out var a) ? a.Get : property.GetValue,
+                Set = generated && accessors.TryGetValue(property.Name, out var b) ? b.Set : property.CanWrite ? property.SetValue : null,
                 DefaultValue = !isNullableState && propertyType.IsValueType ? Activator.CreateInstance(propertyType) : null,
-                NullableState = isNullableState ? MemberColumns.AccessorFor(propertyType) : null,
+                NullableState = isNullableState ? MemberColumns.AccessorFor(Activator.CreateInstance(propertyType)!) : null,
                 IsKey = key != null,
                 AutoNumbered = key?.AutoEnumerable ?? false
             };
@@ -95,6 +97,6 @@ internal static class AttributeMaps
         }
 
         string? entityName = type.GetCustomAttribute<SankhyaEntityAttribute>()?.Name;
-        return new EntityMap(type, entityName, () => Activator.CreateInstance(type)!, members);
+        return new EntityMap(type, entityName, generated ? create : () => Activator.CreateInstance(type)!, members);
     }
 }

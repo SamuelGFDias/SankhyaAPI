@@ -33,7 +33,8 @@ public abstract class SankhyaEntityMap<T> : ISankhyaEntityMap where T : class, n
 
     Type ISankhyaEntityMap.ModelType => typeof(T);
 
-    EntityMap ISankhyaEntityMap.Build() => new(typeof(T), _entityName, () => new T(), _members);
+    EntityMap ISankhyaEntityMap.Build() =>
+        new(typeof(T), _entityName, SankhyaAccessorRegistry.TryGet(typeof(T), out Func<object> create, out _) ? create : () => new T(), _members);
 
     /// <summary>Nome da entidade (instância) no Sankhya, por exemplo <c>Produto</c>.</summary>
     protected void Entity(string name) => _entityName = name;
@@ -103,23 +104,39 @@ public abstract class SankhyaEntityMap<T> : ISankhyaEntityMap where T : class, n
         if (_members.Any(m => m.Name == property.Name))
             throw new InvalidOperationException($"A propriedade {typeof(T).Name}.{property.Name} já foi mapeada.");
 
-        Func<T, TProp> getter = expression.Compile();
-        Action<T, TProp>? setter = property.CanWrite ? CompileSetter<TProp>(property) : null;
         bool isNullableState = typeof(TProp).IsGenericType && typeof(TProp).GetGenericTypeDefinition() == typeof(NullableState<>);
+        (Func<object, object?> get, Action<object, object?>? set) = Accessors(expression, property);
 
         var member = new MemberMap
         {
             Name = property.Name,
             Type = typeof(TProp),
-            Get = o => getter((T)o),
-            Set = setter == null ? null : (o, v) => setter((T)o, (TProp)v!),
+            Get = get,
+            Set = set,
             DefaultValue = isNullableState ? null : default(TProp),
-            NullableState = isNullableState ? MemberColumns.AccessorFor(typeof(TProp)) : null
+            NullableState = isNullableState ? MemberColumns.AccessorFor(default(TProp)!) : null
         };
         _members.Add(member);
         return member;
     }
 
+    /// <summary>
+    /// Acessores gerados pelo source generator, quando existem; senão, compilados da expressão (fora de AOT).
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050",
+        Justification = "Caminho de reserva: com o source generator do pacote, os acessores gerados são usados e nada é compilado em tempo de execução (o SNK010 avisa quando o generator não pôde gerar).")]
+    private static (Func<object, object?> Get, Action<object, object?>? Set) Accessors<TProp>(Expression<Func<T, TProp>> expression, PropertyInfo property)
+    {
+        if (SankhyaAccessorRegistry.TryGet(typeof(T), out _, out IReadOnlyDictionary<string, SankhyaPropertyAccessor> generated)
+         && generated.TryGetValue(property.Name, out SankhyaPropertyAccessor? accessor))
+            return (accessor.Get, accessor.Set);
+
+        Func<T, TProp> getter = expression.Compile();
+        Action<T, TProp>? setter = property.CanWrite ? CompileSetter<TProp>(property) : null;
+        return (o => getter((T)o), setter == null ? null : (o, v) => setter((T)o, (TProp)v!));
+    }
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Idem: reserva quando não há acessor gerado.")]
     private static Action<T, TProp> CompileSetter<TProp>(PropertyInfo property)
     {
         ParameterExpression target = Expression.Parameter(typeof(T));

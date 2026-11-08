@@ -5,10 +5,8 @@ namespace SankhyaAPI.Client.Mapping;
 /// </summary>
 internal static class MemberColumns
 {
-    public static INullableStateAccessor AccessorFor(Type nullableStateType) =>
-        (INullableStateAccessor)typeof(NullableStateAccessor<>).MakeGenericType(nullableStateType.GetGenericArguments()[0])
-                                                                .GetField(nameof(NullableStateAccessor<int>.Instance))!
-                                                                .GetValue(null)!;
+    /// <summary>Acesso ao <see cref="NullableState{T}"/> a partir do seu <c>default</c> encaixotado.</summary>
+    public static NullableStateAccessor AccessorFor(object nullableStateDefault) => new((INullableStateValue)nullableStateDefault);
 
     public static void AddColumn(MemberMap member, string column, SankhyaType type, IReadOnlyDictionary<object, string>? options)
     {
