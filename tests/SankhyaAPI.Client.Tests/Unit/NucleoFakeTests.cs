@@ -115,11 +115,11 @@ public class NucleoFakeTests : IDisposable
     {
         _fake.WithHttpStatus(Load, 503);
         _fake.WithHttpStatus(Save, 503);
-        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.PerOperation, maxRetries: 2);
+        await using SankhyaClient cliente = _fake.CreateClient(SessionMode.PerOperation, maxRetries: 2, configure: o => o.VerifyExistenceOnUpdate = false);
         var produtos = cliente.Repository<Produto>("Produto");
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => produtos.FindAsync("1 = 1"));
-        await Assert.ThrowsAsync<HttpRequestException>(() => produtos.UpdateAsync(new Produto { CodProd = 1, DescrProd = "X" }));
+        await Assert.ThrowsAsync<SankhyaTransportException>(() => produtos.FindAsync("1 = 1"));
+        await Assert.ThrowsAsync<SankhyaTransportException>(() => produtos.UpdateAsync(new Produto { CodProd = 1, DescrProd = "X" }));
 
         Assert.Equal(3, _fake.Calls(Load).Count);
         Assert.Single(_fake.Calls(Save));
@@ -139,7 +139,7 @@ public class NucleoFakeTests : IDisposable
     }
 
     [Fact]
-    public async Task Timeout_da_configuracao_vira_HttpRequestException()
+    public async Task Timeout_da_configuracao_vira_SankhyaTransportException_de_timeout()
     {
         _fake.WithDelay(Load, TimeSpan.FromSeconds(3));
         await using SankhyaClient cliente = SankhyaClient.Create(new SankhyaClientOptions
@@ -148,8 +148,10 @@ public class NucleoFakeTests : IDisposable
             Timeout = TimeSpan.FromMilliseconds(300), MaxRetries = 0
         });
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1"));
+        var ex = await Assert.ThrowsAsync<SankhyaTransportException>(() => cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1"));
         Assert.Contains("Tempo esgotado", ex.Message);
+        Assert.Equal(SankhyaErrorKind.Timeout, ex.Kind);
+        Assert.Equal(System.Net.HttpStatusCode.GatewayTimeout, ex.SuggestedHttpStatus);
     }
 
     [Theory]

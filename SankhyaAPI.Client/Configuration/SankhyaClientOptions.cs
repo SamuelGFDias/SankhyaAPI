@@ -58,6 +58,13 @@ public sealed class SankhyaClientOptions
     public int MaxRetries { get; set; } = 2;
 
     /// <summary>
+    /// Confere, antes de cada update, se as chaves existem. O saveRecord do Sankhya grava mesmo quando a chave não
+    /// existe (cria o registro, como um upsert); com esta opção, o update de chave inexistente lança
+    /// <see cref="Exceptions.SankhyaNotFoundException"/> em vez de criar. Custa uma consulta por lote. Padrão: true.
+    /// </summary>
+    public bool VerifyExistenceOnUpdate { get; set; } = true;
+
+    /// <summary>
     /// Banco por trás do Sankhya, para formatar datas no SQL cru (<see cref="Sql.SankhyaSql"/>). Padrão: SQL Server.
     /// </summary>
     public Sql.SqlDialect Dialect { get; set; } = Sql.SqlDialect.SqlServer;

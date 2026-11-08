@@ -40,6 +40,7 @@ public class ConsultasFakeTests : IDisposable
     public void Query_recusa_quantidade_de_valores_diferente_dos_pontos_de_interrogacao()
     {
         Assert.Throws<ArgumentException>(() => Usuarios().Query().Where("this.CODUSU = ? AND this.NOMEUSU = ?", 1));
+        _ = Usuarios().Query().Where("this.NOMEUSU <> 'Quem?' AND this.CODUSU = ?", 1);
     }
 
     [Fact]
@@ -139,6 +140,7 @@ public class ConsultasFakeTests : IDisposable
     [InlineData("SELECT CODUSU FROM TSIUSU ORDER BY CODUSU", true)]
     [InlineData("SELECT * FROM (SELECT TOP 5 CODUSU FROM TSIUSU ORDER BY CODUSU) x", false)]
     [InlineData("SELECT 'ORDER BY' AS X FROM TSIUSU", false)]
+    [InlineData("SELECT XORDER BY_ FROM T", false)]
     public void Detecta_ORDER_BY_fora_de_parenteses_e_literais(string sql, bool esperado)
     {
         Assert.Equal(esperado, SankhyaSqlClient.HasTopLevelOrderBy(sql));

@@ -27,8 +27,8 @@ public static class SankhyaTelemetry
 
 internal static partial class Log
 {
-    [LoggerMessage(1, LogLevel.Debug, "Sankhya {Service} respondeu status {Status} em {ElapsedMs} ms")]
-    public static partial void Called(ILogger logger, string service, string? status, long elapsedMs);
+    [LoggerMessage(1, LogLevel.Debug, "Sankhya {Service} respondeu HTTP {HttpStatus} em {ElapsedMs} ms")]
+    public static partial void Called(ILogger logger, string service, int httpStatus, long elapsedMs);
 
     [LoggerMessage(2, LogLevel.Warning, "Sankhya {Service}: falha transitória de transporte, tentativa {Attempt} de {MaxAttempts}")]
     public static partial void TransientRetry(ILogger logger, string service, int attempt, int maxAttempts, Exception exception);

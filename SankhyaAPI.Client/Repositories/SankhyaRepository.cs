@@ -126,11 +126,13 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
     private readonly ISankhyaTransport _transport;
     private readonly ISankhyaSession _session;
     private readonly EntityMap _map;
+    private readonly bool _verifyExistence;
 
-    public SankhyaRepository(ISankhyaTransport transport, ISankhyaSession session, string? entityName = null)
+    public SankhyaRepository(ISankhyaTransport transport, ISankhyaSession session, string? entityName = null, bool verifyExistenceOnUpdate = true)
     {
         _transport = transport;
         _session = session;
+        _verifyExistence = verifyExistenceOnUpdate;
         _map = SankhyaMaps.For(typeof(T));
         EntityName = entityName ?? _map.EntityName
                   ?? throw new InvalidOperationException(
@@ -194,6 +196,7 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
         fields(spec);
         var selected = spec.Fields.Select(f => new UpdateField(Member(f.Member), f.Clear)).ToList();
 
+        await EnsureExistAsync([entity], cancellationToken);
         List<T> saved = await SaveAsync(EntityXml.Update(_map, EntityName, [entity], _ => selected), cancellationToken);
         Retrack(entity);
         return saved.FirstOrDefault();
@@ -205,13 +208,16 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
     public async Task<List<T>> UpdateManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default)
     {
         List<T> list = entities.ToList();
-        List<T> saved = await SaveAsync(EntityXml.Update(_map, EntityName, list.Cast<object>().ToList(), ChangedFields), cancellationToken);
+        var body = EntityXml.Update(_map, EntityName, list.Cast<object>().ToList(), ChangedFields).ToList();
+        await EnsureExistAsync(list, cancellationToken);
+        List<T> saved = await SaveAsync(body, cancellationToken);
         foreach (T entity in list) Retrack(entity);
         return saved;
     }
 
     public async Task<T?> UpdateAllAsync(T entity, CancellationToken cancellationToken = default)
     {
+        await EnsureExistAsync([entity], cancellationToken);
         List<T> saved = await SaveAsync(
             EntityXml.Update(_map, EntityName, [entity], e => _map.Members.Where(m => m.Writable).Select(m => new UpdateField(m, m.Value(e) == null))),
             cancellationToken);
@@ -232,6 +238,34 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
     {
         var body = EntityXml.Remove(_map, EntityName, entities.Cast<object>().ToList()).ToList();
         await SendAsync(SankhyaServices.RemoveRecord, body, idempotent: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// O saveRecord cria o registro quando a chave não existe. Antes do update, confere as chaves numa consulta só
+    /// (por lotes de 100) e recusa as inexistentes.
+    /// </summary>
+    private async Task EnsureExistAsync(IReadOnlyList<T> entities, CancellationToken cancellationToken)
+    {
+        if (!_verifyExistence || entities.Count == 0 || _map.Keys.Count == 0) return;
+
+        string KeyOf(object e) => string.Join("\u001f", _map.Keys.Select(k => k.Writes[0].Format(k.Value(e))));
+
+        foreach (T[] chunk in entities.Chunk(100))
+        {
+            string condition = "(" + string.Join(" AND ", _map.Keys.Select(k => $"this.{k.Writes[0].Column} = ?")) + ")";
+            string expression = string.Join(" OR ", chunk.Select(_ => condition));
+            var parameters = chunk.SelectMany(e => _map.Keys.Select(k => Parameter.From(k.Value(e)!))).ToList();
+
+            var body = EntityXml.LoadKeys(_map, EntityName, expression, parameters).ToList();
+            SankhyaXmlResponse response = await SendAsync(SankhyaServices.LoadRecords, body, idempotent: true, cancellationToken);
+            HashSet<string> found = EntityXml.ReadKeys(_map, response.ResponseBody).Select(KeyOf).ToHashSet();
+
+            int missing = chunk.Count(e => !found.Contains(KeyOf(e)));
+            if (missing > 0)
+                throw new Exceptions.SankhyaNotFoundException(
+                    $"{missing} registro(s) de {EntityName} não existe(m). O update foi cancelado porque o Sankhya criaria registros novos.",
+                    SankhyaServices.SaveRecord);
+        }
     }
 
     private IEnumerable<UpdateField> ChangedFields(object entity)

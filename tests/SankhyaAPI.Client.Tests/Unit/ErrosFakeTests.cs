@@ -86,3 +86,125 @@ public class ErrosFakeTests : IDisposable
         Assert.Equal(valor, ex.Data["Valor"]);
     }
 }
+
+/// <summary>
+/// Classificação dos erros com as mensagens reais da homologação (docs/sankhya-protocolo.md, seção Erros) e as de
+/// regra de negócio em trigger (SQL Server e Oracle).
+/// </summary>
+public class ClassificacaoDeErrosTests : IDisposable
+{
+    private const string Load = "CRUDServiceProvider.loadRecords";
+    private const string Save = "CRUDServiceProvider.saveRecord";
+    private const string Remove = "CRUDServiceProvider.removeRecord";
+    private const string Query = "DbExplorerSP.executeQuery";
+
+    private readonly SankhyaFakeServer _fake = new();
+
+    public void Dispose() => _fake.Dispose();
+
+    [Theory]
+    [InlineData("MobileLoginSP.login", "CORE_E01434", "Usuário/Senha inválido.", SankhyaErrorKind.AuthenticationFailed, 401, null)]
+    [InlineData("MobileLoginSP.login", "CORE_E01428", "Usuário/Senha inválido.", SankhyaErrorKind.AuthenticationFailed, 401, null)]
+    [InlineData(Load, "CORE_E04064", "Descritor do campo 'CAMPOXYZ' inválido.", SankhyaErrorKind.InvalidRequest, 400, "CAMPOXYZ")]
+    [InlineData(Load, "CORE_E03405", "Relacionamento: 'Foo' não encontrado em: 'Cidade'", SankhyaErrorKind.InvalidRequest, 400, null)]
+    [InlineData(Load, null, "Não foi encontrado objeto de acesso a dados para este BMP: mge-dwf:EntidadeXyz", SankhyaErrorKind.InvalidRequest, 400, null)]
+    [InlineData(Load, null, "Sintaxe incorreta próxima a '='.", SankhyaErrorKind.InvalidRequest, 400, null)]
+    [InlineData(Load, null, "Parametros informados insuficientes para o critério de consulta.", SankhyaErrorKind.InvalidRequest, 400, null)]
+    [InlineData(Load, "CORE_E02271", "Erro de conversão para número: abc", SankhyaErrorKind.InvalidValue, 422, null)]
+    [InlineData(Load, "CORE_E07537", "Necessario habilitar o parametro 'LOGTABOPER'.", SankhyaErrorKind.NotConfigured, 501, null)]
+    [InlineData(Save, null, "Violação da restrição PRIMARY KEY 'PK_AD_TESTE'. Não é possível inserir a chave duplicada no objeto 'sankhya.AD_TESTE'. O valor de chave duplicada é (777001).", SankhyaErrorKind.DuplicateKey, 409, null)]
+    [InlineData(Save, null, "Propriedade 'AD_TESTE.TEXTO' com largura acima do limite: (150 > 100)", SankhyaErrorKind.InvalidValue, 422, "TEXTO")]
+    [InlineData(Save, null, "Erro de conversão de valor para o campo 'INTEIRO': abc", SankhyaErrorKind.InvalidValue, 422, "INTEIRO")]
+    [InlineData(Save, null, "Campo não existe: AD_TESTE->CAMPOXYZ", SankhyaErrorKind.InvalidRequest, 400, "CAMPOXYZ")]
+    [InlineData(Save, null, "A instrução INSERT conflitou com a restrição do FOREIGN KEY \"FK_X\".", SankhyaErrorKind.ConstraintViolation, 409, null)]
+    [InlineData(Save, null, "ORA-02291: integrity constraint (SANKHYA.FK_X) violated - parent key not found", SankhyaErrorKind.ConstraintViolation, 409, null)]
+    [InlineData(Save, null, "O serviço foi cancelado por situação de concorrência. Essa mesma sessão HTTP fez a requisição duas vezes simultaneamente.", SankhyaErrorKind.Concurrency, 409, null)]
+    [InlineData(Query, null, "Nome de objeto 'TABELA_XYZ' inválido.", SankhyaErrorKind.InvalidRequest, 400, null)]
+    [InlineData(Query, null, "Permitido apenas a execução de consultas, a instrução possui 'UPDATE', 'DELETE' ou 'INSERT' e tais comandos não são permitidos.", SankhyaErrorKind.InvalidRequest, 400, null)]
+    [InlineData(Query, null, "Erro de divisão por zero.", SankhyaErrorKind.QueryFailed, 400, null)]
+    [InlineData("Outro.servico", null, "Algo inesperado", SankhyaErrorKind.Unknown, 502, null)]
+    public void Classifica_pelo_codigo_e_pela_mensagem(string servico, string? codigo, string mensagem, SankhyaErrorKind tipo, int http, string? campo)
+    {
+        (SankhyaErrorKind kind, string? field) = SankhyaErrorClassifier.Classify(servico, "0", mensagem, codigo);
+
+        Assert.Equal(tipo, kind);
+        Assert.Equal(http, (int)SankhyaException.SuggestedStatusFor(kind));
+        Assert.Equal(campo, field);
+    }
+
+    [Fact]
+    public async Task Regra_de_trigger_do_SQL_Server_vira_BusinessRule_com_a_mensagem_limpa()
+    {
+        _fake.WithError(Save, "Pedido bloqueado: cliente com títulos vencidos. A transação foi encerrada no gatilho. O lote foi anulado.");
+
+        var ex = await Assert.ThrowsAsync<SankhyaBusinessRuleException>(
+            () => _fake.CreateClient().Repository<Produto>().CreateAsync(new Produto { DescrProd = "X" }));
+
+        Assert.Equal("Pedido bloqueado: cliente com títulos vencidos.", ex.Message);
+        Assert.Equal(SankhyaErrorKind.BusinessRule, ex.Kind);
+        Assert.Equal(System.Net.HttpStatusCode.UnprocessableEntity, ex.SuggestedHttpStatus);
+    }
+
+    [Fact]
+    public async Task Regra_de_trigger_do_Oracle_vira_BusinessRule_sem_codigo_nem_pilha()
+    {
+        _fake.WithError(Remove, "ORA-20101: Não é permitido excluir produto com movimento\nORA-06512: at \"SANKHYA.TRG_TGFPRO\", line 12\nORA-04088: error during execution of trigger");
+
+        var ex = await Assert.ThrowsAsync<SankhyaBusinessRuleException>(
+            () => _fake.CreateClient().Repository<Produto>().DeleteAsync(new Produto { CodProd = 1 }));
+
+        Assert.Equal("Não é permitido excluir produto com movimento", ex.Message);
+    }
+
+    [Fact]
+    public async Task ToProblem_gera_um_ProblemDetails()
+    {
+        _fake.WithError(Save, "Violação da restrição PRIMARY KEY 'PK_X'. Não é possível inserir a chave duplicada.");
+
+        var ex = await Assert.ThrowsAnyAsync<SankhyaException>(
+            () => _fake.CreateClient().Repository<Produto>().CreateAsync(new Produto { DescrProd = "X" }));
+        SankhyaProblem problema = ex.ToProblem();
+
+        Assert.Equal(409, problema.Status);
+        Assert.Equal("urn:sankhya:error:DuplicateKey", problema.Type);
+        Assert.Equal(SankhyaErrorKind.DuplicateKey, problema.Kind);
+        Assert.Equal(Save, problema.Service);
+    }
+
+    [Fact]
+    public async Task Update_de_chave_inexistente_e_barrado_antes_de_gravar()
+    {
+        _fake.WithRawXml(Load, "<responseBody><entities total=\"0\" /></responseBody>");
+
+        var ex = await Assert.ThrowsAsync<SankhyaNotFoundException>(
+            () => _fake.CreateClient().Repository<Produto>().UpdateAsync(new Produto { CodProd = 10, DescrProd = "X" }));
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, ex.SuggestedHttpStatus);
+        Assert.Empty(_fake.Calls(Save));
+        string consulta = _fake.Calls(Load).Single().RequestMessage!.Body!;
+        Assert.Contains("<expression>(this.CODPROD = ?)</expression>", consulta);
+        Assert.Contains("<field name=\"CODPROD\" />", consulta);
+    }
+
+    [Fact]
+    public async Task Update_de_chave_existente_confere_e_grava()
+    {
+        _fake.WithEntities(Load, ["10"]);
+        _fake.WithEntities(Save, ["10", "X"]);
+
+        await _fake.CreateClient().Repository<Produto>().UpdateManyAsync([new Produto { CodProd = 10, DescrProd = "X" }]);
+
+        Assert.Single(_fake.Calls(Load));
+        Assert.Single(_fake.Calls(Save));
+    }
+
+    [Fact]
+    public async Task Verificacao_de_existencia_pode_ser_desligada()
+    {
+        _fake.WithEntities(Save, ["10", "X"]);
+
+        await _fake.CreateClient(configure: o => o.VerifyExistenceOnUpdate = false).Repository<Produto>().UpdateAsync(new Produto { CodProd = 10, DescrProd = "X" });
+
+        Assert.Empty(_fake.Calls(Load));
+    }
+}

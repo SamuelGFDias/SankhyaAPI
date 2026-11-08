@@ -1,3 +1,4 @@
+using SankhyaAPI.Client.Exceptions;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Unit;
@@ -13,7 +14,7 @@ public class LeituraEntidadesFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ISankhyaRepository<Produto> Produtos() => _fake.CreateClient().Repository<Produto>("Produto");
+    private ISankhyaRepository<Produto> Produtos() => _fake.CreateClient(configure: o => o.VerifyExistenceOnUpdate = false).Repository<Produto>("Produto");
     private ISankhyaRepository<Usuario> Usuarios() => _fake.CreateClient().Repository<Usuario>("Usuario");
 
     [Fact]
