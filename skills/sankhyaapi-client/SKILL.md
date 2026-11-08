@@ -47,6 +47,6 @@ Nesta skill, prefira o que está nesses arquivos ao que você lembra: a API muda
 - O saveRecord **cria** o registro quando a chave do update não existe (upsert). O pacote confere antes e lança `SankhyaNotFoundException`, pela opção `VerifyExistenceOnUpdate`, que vem ligada.
 - O executeQuery corta em **5000 linhas**. O pacote lança `SankhyaTruncatedResultException`; para mais linhas, use `QueryPagedAsync`.
 - O Sankhya recusa duas requisições simultâneas na mesma sessão. O pacote usa um pool de sessões (`MaxSessions`, padrão 4).
-- Itens de nota (`ItemNota`/TGFITE) não aceitam inclusão pelo CRUD genérico. O servidor recusa sem mensagem, e o pacote lança `Unknown` com a explicação.
+- Itens de nota (`ItemNota`/TGFITE) não aceitam inclusão pelo CRUD genérico (limite conhecido). O servidor recusa sem mensagem, e o pacote lança `Unknown` com a explicação. Leitura, update e triggers do item funcionam. Gravação recusada sem mensagem costuma ser campo obrigatório no dicionário (`TDDPCO.requerido`) que não foi enviado (ver `references/setup.md`).
 - `ModifiedSince` exige o parâmetro `LOGTABOPER` habilitado no Sankhya.
 - O servidor não valida tudo: data inválida e opção fora da lista podem ser gravadas. Valide no domínio.

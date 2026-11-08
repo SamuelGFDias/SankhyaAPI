@@ -174,6 +174,34 @@ Uma exclusão chegou a levar mais de 100 s uma vez (e concluiu no servidor depoi
 
 Para confirmar, crie numa base de teste uma trigger em AD_TESTE com RAISERROR e rode `ErrosRealTests`.
 
+### Limite conhecido: inclusão de item de nota (TGFITE) pelo CRUD
+
+O insert de `ItemNota` pelo `CRUDServiceProvider.saveRecord` responde `status="0"` com mensagem vazia, e a causa não foi resolvida. O que já se sabe, para quem retomar:
+
+- **Não é falta de coluna do banco:** falha igual com as 47 colunas preenchidas copiadas de um item real, com `SEQUENCIA` explícita e só com as `NOT NULL` sem default do banco (`NUNOTA`, `SEQUENCIA`, `CODEMP`, `CODPROD`).
+- **Pista não testada:** no dicionário, `CODTPA` tem `requerido = S` (TDDPCO), mas no banco aceita nulo e é FK para `TGFTPA.CODTPA`. O item usado de modelo tinha `CODTPA` nulo, então a cópia não o incluiu. Um campo obrigatório no dicionário e anulável no banco é candidato a causar a falha silenciosa.
+- O serviço próprio de nota (`CACSP.incluirAlterarItemNota`) não existe no `/mge` desta homologação, e o `/mgecom` responde 302.
+- Update e leitura de item pela chave composta funcionam, e as triggers do item disparam no update (ver a tabela acima).
+
+O pacote não contorna esse caso. Ele lança `SankhyaException` com `Kind = Unknown` e uma mensagem explicando que a entidade pode exigir o serviço próprio.
+
+### Como descobrir os campos obrigatórios de uma entidade
+
+A obrigatoriedade do Sankhya fica no dicionário (`TDDPCO`, propriedade `requerido` ou `required` com valor `S`/`true`), não só no `NOT NULL` do banco. Compare os dois:
+
+```sql
+-- obrigatórios no dicionário
+SELECT C.NOMECAMPO, P.NOME, P.VALOR
+FROM TDDCAM C JOIN TDDPCO P ON P.NUCAMPO = C.NUCAMPO
+WHERE C.NOMETAB = 'TGFITE' AND P.NOME IN ('requerido', 'required');
+
+-- NOT NULL sem default no banco
+SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'TGFITE' AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL;
+```
+
+Um campo obrigatório no dicionário e anulável no banco (como `CODTPA` na TGFITE) não dá erro de banco: é o Sankhya que recusa, às vezes sem mensagem. Em tabelas grandes, evite agregação ou filtro sem índice (`GROUP BY`, `WHERE coluna IS NOT NULL` na TGFITE passam de minutos); amostre pela chave.
+
 ## 7. Dicionário de dados e tipos
 
 | Fato | Fonte |
@@ -181,6 +209,8 @@ Para confirmar, crie numa base de teste uma trigger em AD_TESTE com RAISERROR e 
 | `TDDINS`: `NOMETAB` → `NOMEINSTANCIA` (nome da entidade). Uma tabela tem várias instâncias (`TSICID` → `Cidade`, `CidadeDestino`, ...). Tabela `AD_` criada pela tela fica com instância de mesmo nome | H |
 | `TDDCAM`: `NOMETAB`, `NOMECAMPO`, `TIPCAMPO`, `TIPOAPRESENTACAO` (`P` padrão, `O` lista de opções), `DESCRCAMPO`, `NUCAMPO`. `TAMANHO` vem nulo, então o tamanho real só aparece em `INFORMATION_SCHEMA.COLUMNS` | H |
 | `TDDOPC`: opções das listas (`NUCAMPO`, `VALOR`, `OPCAO`) | H |
+| `TDDPCO`: propriedades de cada campo (`NUCAMPO`, `NOME`, `VALOR`). `requerido` (S/N) marca o campo obrigatório no Sankhya; há também `readOnly`, `visivel`, `nullable` | H |
+| `TDDLIG` + `TDDINS`: ligações entre instâncias (o caminho usado em `<entity path>`) | H |
 | Tipos (`TIPCAMPO` → SQL Server → .NET): `S` → `varchar(n)` → `string`; `I` → `int` → `int`/`long`; `F` → **`float`** → `decimal`/`double`; `D` → `datetime` → `DateOnly`; `H` → `datetime` → `DateTime`; `T` → **`smallint` (HHMM)** → `TimeOnly`; lista de opções → `varchar(10)` + `TDDOPC` → `enum` com `[XmlEnum]` | H/T |
 | Checkbox criado pela tela vira **lista de opções com S/N** (`TIPOAPRESENTACAO="O"`) | H |
 | Os nomes de campo `DECIMAL` e `DATA` são recusados na criação (erro `CORE_E01912`, provavelmente palavra reservada); `DATAHORA`, `HORA`, `TEXTO` são aceitos | H |

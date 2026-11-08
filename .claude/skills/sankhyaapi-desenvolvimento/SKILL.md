@@ -79,7 +79,9 @@ Comportamento do servidor Sankhya: [`docs/sankhya-protocolo.md`](../../../docs/s
 - Sessão não aceita requisições simultâneas, por isso o pool.
 - saveRecord de update é upsert, por isso `VerifyExistenceOnUpdate`.
 - executeQuery: teto de 5000 linhas, sem parâmetros, só SELECT. DDL é recusado, então não dá para criar trigger de teste.
-- Item de nota (TGFITE) não grava pelo CRUD genérico (status 0 sem mensagem). Já foi descartada a hipótese de falta de campo: falha igual com as 47 colunas de um item real. Não repita a investigação; o caminho é o serviço de nota (`CACSP`), quando estiver exposto. Para provocar as triggers do item, use **update inválido num item existente, restaurando o original** (`Triggers_do_item_de_nota_...`). `CACSP` não existe no `/mge`, e o `/mgecom` responde 302 nesta homologação.
+- Item de nota (TGFITE) não grava pelo CRUD genérico (status 0 sem mensagem). **Limite conhecido**, decidido com o usuário: não investigar mais sem pedido. Já descartado: falta de coluna do banco (falha igual com as 47 colunas de um item real). Pista não testada: `CODTPA` tem `requerido = S` no dicionário (TDDPCO) e é anulável no banco. Detalhes em `docs/sankhya-protocolo.md`, "Limite conhecido".
+- Campos obrigatórios: compare `TDDPCO` (`requerido`/`required`) com o `NOT NULL` do banco. Obrigatório no dicionário e anulável no banco não dá erro de banco e pode falhar sem mensagem.
+- Consulta na TGFITE com `GROUP BY` ou `WHERE ... IS NOT NULL` passa de minutos: amostre pela chave (`WHERE NUNOTA = ? AND SEQUENCIA = ?`). Para provocar as triggers do item, use **update inválido num item existente, restaurando o original** (`Triggers_do_item_de_nota_...`). `CACSP` não existe no `/mge`, e o `/mgecom` responde 302 nesta homologação.
 - `NUMNOTA` é obrigatório no cabeçalho de nota (mande 0 em pedido).
 - Erro sem mensagem não é regra de negócio: o classificador devolve `Unknown` explicado.
 - A homologação às vezes fica lenta (uma exclusão passou de 100 s e concluiu depois). Antes de culpar o código, repita a operação isolada.

@@ -94,6 +94,17 @@ var campos = await sql.QueryAsDictionaryAsync($"SELECT NOMECAMPO, TIPCAMPO, DESC
 
 `TIPCAMPO`: `S` texto, `I` inteiro, `F` decimal, `D` data, `H` data e hora, `T` hora (HHMM). Campo com lista de opções: veja `TDDOPC`.
 
+**Campos obrigatórios** ficam no dicionário, não só no banco. Antes de montar um insert, liste os dois e mapeie todos:
+
+```csharp
+var obrigatorios = await sql.QueryAsDictionaryAsync(
+    $"SELECT C.NOMECAMPO FROM TDDCAM C JOIN TDDPCO P ON P.NUCAMPO = C.NUCAMPO WHERE C.NOMETAB = {"TGFPRO"} AND P.NOME IN ('requerido', 'required') AND P.VALOR IN ('S', 'true')");
+var notNull = await sql.QueryAsDictionaryAsync(
+    $"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = {"TGFPRO"} AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL");
+```
+
+Um campo obrigatório só no dicionário não dá erro de banco: o Sankhya recusa, às vezes **sem mensagem** (o pacote lança `Unknown` explicado).
+
 ## 6. Observabilidade (opcional)
 
 ```csharp
