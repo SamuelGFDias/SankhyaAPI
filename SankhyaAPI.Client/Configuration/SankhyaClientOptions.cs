@@ -58,6 +58,11 @@ public sealed class SankhyaClientOptions
     public int MaxRetries { get; set; } = 2;
 
     /// <summary>
+    /// Banco por trás do Sankhya, para formatar datas no SQL cru (<see cref="Sql.SankhyaSql"/>). Padrão: SQL Server.
+    /// </summary>
+    public Sql.SqlDialect Dialect { get; set; } = Sql.SqlDialect.SqlServer;
+
+    /// <summary>
     /// Permite URL <c>http://</c>. Só para desenvolvimento e testes: a senha e a sessão trafegam em texto puro.
     /// </summary>
     public bool AllowHttp { get; set; }

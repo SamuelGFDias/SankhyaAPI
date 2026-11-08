@@ -73,7 +73,10 @@ Envelope XML:
 | Um parâmetro `I` com texto não numérico (`1 OR 1=1`) é recusado pelo servidor | T |
 | Os valores das datas voltam como `dd/MM/yyyy HH:mm:ss`, os decimais com ponto, a hora (`T`) como número HHMM e a opção como o código | T |
 | Sem registros: `<entities total="0">`, só com `<metadata>` | H |
-| Atributos documentados e **ainda não sondados**: `useFileBasedPagination="true"` (paginação em disco, indicada para mais de 1000 páginas), `modifiedSince="2024-04-16T12:59:59"` (só registros alterados; depende do log de alterações de tabelas), `ignoreCalculatedFields="true"`, `tryJoinedFields="true"` e `entity` com `path` de entidade ligada (`"Cidade"`, `"GrupoProduto"`) | D |
+| `useFileBasedPagination="true"`: **aceito e ignorado**. A resposta é byte a byte idêntica (Cidade, páginas 0, 1 e 150) e a página continua de 50. A página depois do fim (215) volta `total="0" hasMoreResult="false" offset="10750"`. `total` é o tamanho da página, não da tabela | H/T |
+| `modifiedSince="2026-01-01T00:00:00"`: **erro** `status="0"`, `tsErrorCode="CORE_E07537"`, "Necessario habilitar o parametro 'LOGTABOPER'.", em qualquer data e entidade. Exige o parâmetro `LOGTABOPER` habilitado no Sankhya (não habilitado na homologação) | H/T |
+| `ignoreCalculatedFields="true"`: sem mudança pedindo campos normais. O efeito sobre campos calculados não foi constatado | H/T |
+| **Entidades ligadas:** `<entity path="UnidadeFederativa"><field name="UF"/></entity>` junto com `<entity path="">`. A coluna vem na `<metadata>` como `UnidadeFederativa_UF`, depois dos campos de `path=""`. O caminho é o nome da instância ligada (`TDDLIG`, `TIPLIGACAO='I'`; as de Cidade são Parceiro, UnidadeFederativa, Regiao, AliquotaISS...). `tryJoinedFields="true"` não muda nada. Caminho inexistente dá `CORE_E03405` ("Relacionamento: 'Foo' não encontrado em: 'Cidade'"); campo inexistente ou com ponto (`UnidadeFederativa.UF` em `path=""`) dá `CORE_E04064` ("Descritor do campo ... inválido"). Valores podem vir com espaços à direita | H |
 
 ## 5. executeQuery (`DbExplorerSP.executeQuery`)
 
@@ -91,6 +94,8 @@ Envelope JSON: `{"serviceName":"DbExplorerSP.executeQuery","requestBody":{"sql":
 | SQL inválido: `status="0"` e `statusMessage` em texto puro, com a mensagem do banco | T |
 | Os valores de `rows` vêm como tipos JSON. Com o `ObjectToInferredTypesConverter` do Refit, viram `long`, `string` e assim por diante, não `JsonElement` | T (fake) |
 | O SQL roda com o poder do usuário de integração: concatenar entrada do usuário é injeção | — |
+| O `requestBody` JSON aceita escape Unicode (`\u0027` para `'`): o `Utf8JsonWriter` padrão escapa aspas e o servidor lê corretamente | T |
+| Data no SQL Server: `CONVERT(DATETIME, '2026-11-07T14:30:00', 126)` e `CONVERT(DATE, '2026-11-07', 23)` funcionam no executeQuery | T |
 
 ## 6. saveRecord e removeRecord
 
