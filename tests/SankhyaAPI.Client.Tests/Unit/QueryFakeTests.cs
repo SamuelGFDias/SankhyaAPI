@@ -78,6 +78,7 @@ public class QueryFakeTests : IDisposable
 
         Assert.Equal("SUP", linha["NOMEUSU"]);
         Assert.IsNotType<System.Text.Json.JsonElement>(linha["CODUSU"]);
+        Assert.IsType<long>(linha["CODUSU"]);
     }
 
     [Fact]

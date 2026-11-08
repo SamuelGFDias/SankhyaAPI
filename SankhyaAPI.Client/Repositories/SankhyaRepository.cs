@@ -106,6 +106,17 @@ public interface ISankhyaRepository<T> where T : class, new()
     Task DeleteAsync(T entity, CancellationToken cancellationToken = default);
 
     Task DeleteManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Consulta fluente: filtros parametrizados, ordenação pela coluna mapeada, <c>StreamAsync</c> paginado,
+    /// <c>ModifiedSince</c> e outros atributos do loadRecords.
+    /// </summary>
+    SankhyaQuery<T> Query();
+
+    /// <summary>
+    /// Busca pela chave, com os valores na ordem dos campos da chave no mapa. Devolve <c>null</c> se não existir.
+    /// </summary>
+    Task<T?> GetAsync(object[] keyValues, CancellationToken cancellationToken = default);
 }
 
 internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : class, new()
@@ -128,6 +139,21 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
 
     public string EntityName { get; }
 
+    internal EntityMap Map => _map;
+
+    public SankhyaQuery<T> Query() => new(this);
+
+    public async Task<T?> GetAsync(object[] keyValues, CancellationToken cancellationToken = default)
+    {
+        if (_map.Keys.Count == 0) throw new InvalidOperationException($"O mapa de {typeof(T).Name} não tem chave.");
+        if (keyValues.Length != _map.Keys.Count)
+            throw new ArgumentException($"A chave de {typeof(T).Name} tem {_map.Keys.Count} campo(s); foram passados {keyValues.Length} valores.", nameof(keyValues));
+
+        string expression = string.Join(" AND ", _map.Keys.Select(k => $"this.{k.Writes[0].Column} = ?"));
+        (List<T> items, _) = await LoadAsync(expression, keyValues.Select(Parameter.From).ToList(), null, 0, null, cancellationToken);
+        return items.FirstOrDefault();
+    }
+
     public Task<List<T>> FindAsync(string expression, CancellationToken cancellationToken = default) =>
         LoadAsync(expression, null, null, cancellationToken);
 
@@ -147,10 +173,7 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
     {
         ArgumentOutOfRangeException.ThrowIfNegative(page);
 
-        var body = EntityXml.LoadRecords(_map, EntityName, expression, parameters?.ToList(), orderBy, page).ToList();
-        SankhyaXmlResponse response = await SendAsync(SankhyaServices.LoadRecords, body, idempotent: true, cancellationToken);
-
-        (List<T> items, bool hasMore) = EntityXml.ReadEntities<T>(_map, response.ResponseBody);
+        (List<T> items, bool hasMore) = await LoadAsync(expression, parameters?.ToList(), orderBy, page, null, cancellationToken);
         return new SankhyaPage<T>(items, page, hasMore);
     }
 
@@ -261,11 +284,20 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
         }
     }
 
-    private async Task<List<T>> LoadAsync(string expression, IReadOnlyList<Parameter>? parameters, string? orderBy, CancellationToken cancellationToken)
+    private async Task<List<T>> LoadAsync(string expression, IReadOnlyList<Parameter>? parameters, string? orderBy, CancellationToken cancellationToken) =>
+        (await LoadAsync(expression, parameters, orderBy, null, null, cancellationToken)).Items;
+
+    internal async Task<(List<T> Items, bool HasMore)> LoadAsync(
+        string expression,
+        IReadOnlyList<Parameter>? parameters,
+        string? orderBy,
+        int? page,
+        IEnumerable<XAttribute>? attributes,
+        CancellationToken cancellationToken)
     {
-        var body = EntityXml.LoadRecords(_map, EntityName, expression, parameters, orderBy, null).ToList();
+        var body = EntityXml.LoadRecords(_map, EntityName, expression, parameters, orderBy, page, attributes).ToList();
         SankhyaXmlResponse response = await SendAsync(SankhyaServices.LoadRecords, body, idempotent: true, cancellationToken);
-        return EntityXml.ReadEntities<T>(_map, response.ResponseBody).Items;
+        return EntityXml.ReadEntities<T>(_map, response.ResponseBody);
     }
 
     private async Task<List<T>> SaveAsync(IEnumerable<XElement> body, CancellationToken cancellationToken)

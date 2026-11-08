@@ -27,6 +27,15 @@ Versão com quebra de API, sem camada de compatibilidade com a 5.x. O guia de mi
 - **`NullableState<T>` imutável** (#16): `readonly struct` com `Set(v)`, `Clear()`, `Unset`; JSON pelo valor puro.
 - `Repository<T>()` resolve o nome da entidade pelo mapa ou por `[SankhyaEntity]`. `SankhyaModelBase` deixa de existir.
 
+### Consultas (P3)
+
+- **Consulta fluente** `repo.Query()`: `Where(expressão, valores...)` com tipo inferido e contagem de `?` conferida, `OrderBy`/`OrderByDescending` pela coluna mapeada, `ToListAsync`, `ToPageAsync`, `FirstOrDefaultAsync` e **`StreamAsync`** (`IAsyncEnumerable` paginado, sem carregar tudo em memória) (#27).
+- **`GetAsync([chave...])`** pela chave simples ou composta.
+- **Atributos do loadRecords** (#28): `ModifiedSince` (exige `LOGTABOPER` no Sankhya; sem ele, `CORE_E07537`), `IgnoreCalculatedFields`, `FileBasedPagination`. As entidades ligadas já estão no mapa (`Joined`). Comportamento sondado na homologação e registrado em `docs/sankhya-protocolo.md`.
+- **SQL cru seguro** (#29): `ISankhyaSql` recebe `SankhyaSql`, uma string interpolada que escapa e formata cada valor pelo tipo (dialeto SQL Server ou Oracle em `SankhyaClientOptions.Dialect`). `SankhyaSql.Raw` serve para trechos fixos.
+- **`QueryPagedAsync`** percorre resultados de qualquer tamanho com `OFFSET ... FETCH` e recusa SQL com `ORDER BY` próprio. **`QueryTopAsync`** limita com `maxRows` e avisa se há mais linhas (pede uma a mais, porque o servidor não marca `burstLimit` com `maxRows`).
+- Números inteiros do executeQuery voltam como `long` no dicionário (antes, `decimal`).
+
 ## 5.2.0
 
 Correções da auditoria (entrega A de `docs/plano-correcao.md`). Nenhuma assinatura pública mudou, mas há mudanças de comportamento, marcadas com ⚠.

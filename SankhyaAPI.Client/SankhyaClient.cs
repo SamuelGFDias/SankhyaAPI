@@ -21,11 +21,11 @@ public sealed class SankhyaClient : IAsyncDisposable
 {
     private readonly HttpClient? _ownedHttpClient;
 
-    internal SankhyaClient(ISankhyaTransport transport, ISankhyaSession session, HttpClient? ownedHttpClient = null)
+    internal SankhyaClient(ISankhyaTransport transport, ISankhyaSession session, SankhyaClientOptions options, HttpClient? ownedHttpClient = null)
     {
         Transport = transport;
         Session = session;
-        Sql = new SankhyaSqlClient(transport, session);
+        Sql = new SankhyaSqlClient(transport, session, options.Dialect);
         Reports = new SankhyaReports(transport, session);
         _ownedHttpClient = ownedHttpClient;
     }
@@ -43,7 +43,7 @@ public sealed class SankhyaClient : IAsyncDisposable
         };
         var transport = new SankhyaTransport(http, options, loggerFactory?.CreateLogger<SankhyaTransport>());
         var session = new SankhyaSession(transport, options, loggerFactory?.CreateLogger<SankhyaSession>());
-        return new SankhyaClient(transport, session, http);
+        return new SankhyaClient(transport, session, options, http);
     }
 
     public ISankhyaSession Session { get; }
@@ -125,7 +125,10 @@ public static class SankhyaServiceCollectionExtensions
             sp.GetRequiredService<ISankhyaTransport>(),
             sp.GetRequiredService<IOptions<SankhyaClientOptions>>().Value,
             sp.GetService<ILogger<SankhyaSession>>()));
-        services.TryAddSingleton(sp => new SankhyaClient(sp.GetRequiredService<ISankhyaTransport>(), sp.GetRequiredService<ISankhyaSession>()));
+        services.TryAddSingleton(sp => new SankhyaClient(
+            sp.GetRequiredService<ISankhyaTransport>(),
+            sp.GetRequiredService<ISankhyaSession>(),
+            sp.GetRequiredService<IOptions<SankhyaClientOptions>>().Value));
         services.TryAddSingleton(sp => sp.GetRequiredService<SankhyaClient>().Sql);
         services.TryAddSingleton(sp => sp.GetRequiredService<SankhyaClient>().Reports);
 

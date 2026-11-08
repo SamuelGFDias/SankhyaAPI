@@ -133,6 +133,31 @@ public sealed class SankhyaFakeServer : IDisposable
         return this;
     }
 
+    /// <summary>
+    /// Resposta de uma página do loadRecords (casa pelo <c>offsetPage</c> do pedido).
+    /// </summary>
+    public SankhyaFakeServer ComPagina(int pagina, bool temMais, params string[][] linhas)
+    {
+        string entities = Entidades(linhas).Replace("<entities ", $"<entities hasMoreResult=\"{(temMais ? "true" : "false")}\" offsetPage=\"{pagina}\" ");
+        _server.Given(Request.Create().WithPath(ServicePath).WithParam("serviceName", "CRUDServiceProvider.loadRecords").UsingPost()
+                             .WithBody(new WireMock.Matchers.WildcardMatcher($"*offsetPage=\"{pagina}\"*")))
+               .RespondWith(Response.Create().WithHeader("Content-Type", "text/xml; charset=ISO-8859-1")
+                                    .WithBody(Xml("CRUDServiceProvider.loadRecords", $"<responseBody>{entities}</responseBody>"), encoding: Encoding.Latin1));
+        return this;
+    }
+
+    /// <summary>
+    /// executeQuery que responde conforme o SQL contenha o trecho informado (para a consulta paginada).
+    /// </summary>
+    public SankhyaFakeServer ComQuerySe(string trechoDoSql, string fieldsMetadataJson, string rowsJson)
+    {
+        _server.Given(Request.Create().WithPath(ServicePath).WithParam("serviceName", "DbExplorerSP.executeQuery").UsingPost()
+                             .WithBody(new WireMock.Matchers.WildcardMatcher($"*{trechoDoSql}*")))
+               .RespondWith(Response.Create().WithHeader("Content-Type", "application/json; charset=UTF-8")
+                                    .WithBody($$$"""{"serviceName":"DbExplorerSP.executeQuery","status":"1","responseBody":{"fieldsMetadata":{{{fieldsMetadataJson}}},"rows":{{{rowsJson}}},"burstLimit":false}}"""));
+        return this;
+    }
+
     public SankhyaFakeServer ComStatusHttp(string serviceName, int status) =>
         Responder(serviceName, "", "text/plain", status);
 

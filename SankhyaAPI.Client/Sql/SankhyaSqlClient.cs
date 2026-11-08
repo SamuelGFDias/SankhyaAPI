@@ -18,23 +18,113 @@ public interface ISankhyaSql
     /// (<c>[XmlElement]</c>/<c>[Key]</c> ou nome da propriedade).
     /// </summary>
     /// <exception cref="SankhyaTruncatedResultException">O resultado passou de 5000 linhas e foi cortado pelo servidor.</exception>
-    Task<List<T>> QueryRawAsync<T>(string sql, CancellationToken cancellationToken = default) where T : class, new();
+    Task<List<T>> QueryRawAsync<T>(SankhyaSql sql, CancellationToken cancellationToken = default) where T : class, new();
 
     /// <summary>
     /// Executa a consulta e devolve cada linha como dicionário coluna → valor .NET (<c>long</c>, <c>decimal</c>,
     /// <c>string</c> sem espaços nas pontas, <c>DateTime</c>, <c>bool</c> ou <c>null</c>).
     /// </summary>
-    Task<List<Dictionary<string, object?>>> QueryAsDictionaryAsync(string sql, CancellationToken cancellationToken = default);
+    Task<List<Dictionary<string, object?>>> QueryAsDictionaryAsync(SankhyaSql sql, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Até <paramref name="maxRows"/> linhas (no máximo 5000), sem erro quando há mais: <see cref="SankhyaRows{T}.HasMore"/>
+    /// diz se ficaram linhas de fora.
+    /// </summary>
+    Task<SankhyaRows<T>> QueryTopAsync<T>(SankhyaSql sql, int maxRows, CancellationToken cancellationToken = default) where T : class, new();
+
+    /// <summary>
+    /// Percorre um resultado de qualquer tamanho em páginas, embrulhando a consulta em
+    /// <c>SELECT * FROM (sql) q ORDER BY ordenação OFFSET n ROWS FETCH NEXT tamanho ROWS ONLY</c>.
+    /// </summary>
+    /// <param name="orderBy">Ordenação estável (obrigatória), por exemplo <c>"CODPARC"</c>. Fixa no código, não do usuário.</param>
+    /// <param name="pageSize">Linhas por chamada, até 5000.</param>
+    /// <exception cref="ArgumentException">O SQL tem <c>ORDER BY</c> próprio (o SQL Server o recusa dentro da subconsulta): passe a ordenação em <paramref name="orderBy"/>.</exception>
+    IAsyncEnumerable<T> QueryPagedAsync<T>(SankhyaSql sql, string orderBy, int pageSize = 1000, CancellationToken cancellationToken = default) where T : class, new();
 }
 
-internal sealed class SankhyaSqlClient(ISankhyaTransport transport, ISankhyaSession session) : ISankhyaSql
+/// <summary>
+/// Linhas de uma consulta limitada e se ficaram outras de fora.
+/// </summary>
+public sealed record SankhyaRows<T>(IReadOnlyList<T> Items, bool HasMore);
+
+internal sealed partial class SankhyaSqlClient(ISankhyaTransport transport, ISankhyaSession session, SqlDialect dialect) : ISankhyaSql
 {
     private const int ServerRowLimit = 5000;
 
-    public async Task<List<T>> QueryRawAsync<T>(string sql, CancellationToken cancellationToken = default)
+    public async Task<List<T>> QueryRawAsync<T>(SankhyaSql sql, CancellationToken cancellationToken = default)
         where T : class, new()
     {
-        using JsonDocument document = await ExecuteAsync(sql, cancellationToken);
+        using JsonDocument document = await ExecuteAsync(sql.Render(dialect), null, cancellationToken);
+        return Map<T>(document);
+    }
+
+    public async Task<SankhyaRows<T>> QueryTopAsync<T>(SankhyaSql sql, int maxRows, CancellationToken cancellationToken = default)
+        where T : class, new()
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxRows, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxRows, ServerRowLimit);
+
+        // Com maxRows o servidor não marca burstLimit: pede uma linha a mais para saber se há outras.
+        int asked = Math.Min(maxRows + 1, ServerRowLimit);
+        using JsonDocument document = await ExecuteAsync(sql.Render(dialect), asked, cancellationToken);
+        List<T> rows = Map<T>(document);
+        bool hasMore = rows.Count > maxRows || (asked == ServerRowLimit && rows.Count == ServerRowLimit && maxRows == ServerRowLimit);
+        return new SankhyaRows<T>(rows.Take(maxRows).ToList(), hasMore);
+    }
+
+    public async IAsyncEnumerable<T> QueryPagedAsync<T>(
+        SankhyaSql sql,
+        string orderBy,
+        int pageSize = 1000,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        where T : class, new()
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orderBy);
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, ServerRowLimit);
+
+        string inner = sql.Render(dialect);
+        if (HasTopLevelOrderBy(inner))
+            throw new ArgumentException(
+                "O SQL da consulta paginada não pode ter ORDER BY próprio (o SQL Server o recusa dentro da subconsulta). Passe a ordenação em orderBy.",
+                nameof(sql));
+
+        for (long offset = 0;; offset += pageSize)
+        {
+            string page = $"SELECT * FROM ({inner}) q ORDER BY {orderBy} OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
+            using JsonDocument document = await ExecuteAsync(page, null, cancellationToken);
+            List<T> rows = Map<T>(document);
+            foreach (T row in rows) yield return row;
+            if (rows.Count < pageSize) yield break;
+        }
+    }
+
+    /// <summary>
+    /// <c>ORDER BY</c> fora de parênteses e de literais.
+    /// </summary>
+    internal static bool HasTopLevelOrderBy(string sql)
+    {
+        int depth = 0;
+        bool quoted = false;
+        for (int i = 0; i < sql.Length; i++)
+        {
+            char c = sql[i];
+            if (c == '\'') quoted = !quoted;
+            if (quoted) continue;
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (depth == 0 && OrderByAt().IsMatch(sql.AsSpan(i))) return true;
+        }
+
+        return false;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^ORDER\s+BY\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex OrderByAt();
+
+    private static List<T> Map<T>(JsonDocument document)
+        where T : class, new()
+    {
         (List<(string Name, int Index)> columns, JsonElement rows) = Read(document);
 
         EntityMap map = SankhyaMaps.ForRow(typeof(T));
@@ -56,9 +146,9 @@ internal sealed class SankhyaSqlClient(ISankhyaTransport transport, ISankhyaSess
         return result;
     }
 
-    public async Task<List<Dictionary<string, object?>>> QueryAsDictionaryAsync(string sql, CancellationToken cancellationToken = default)
+    public async Task<List<Dictionary<string, object?>>> QueryAsDictionaryAsync(SankhyaSql sql, CancellationToken cancellationToken = default)
     {
-        using JsonDocument document = await ExecuteAsync(sql, cancellationToken);
+        using JsonDocument document = await ExecuteAsync(sql.Render(dialect), null, cancellationToken);
         (List<(string Name, int Index)> columns, JsonElement rows) = Read(document);
 
         return rows.EnumerateArray()
@@ -66,9 +156,18 @@ internal sealed class SankhyaSqlClient(ISankhyaTransport transport, ISankhyaSess
                    .ToList();
     }
 
-    private Task<JsonDocument> ExecuteAsync(string sql, CancellationToken cancellationToken) =>
+    private Task<JsonDocument> ExecuteAsync(string sql, int? maxRows, CancellationToken cancellationToken) =>
         session.ExecuteAsync(
-            (id, ct) => transport.SendJsonAsync(SankhyaServices.ExecuteQuery, w => w.WriteString("sql", sql), id, idempotent: true, ct),
+            (id, ct) => transport.SendJsonAsync(
+                SankhyaServices.ExecuteQuery,
+                w =>
+                {
+                    w.WriteString("sql", sql);
+                    if (maxRows != null) w.WriteString("maxRows", maxRows.Value.ToString(CultureInfo.InvariantCulture));
+                },
+                id,
+                idempotent: true,
+                ct),
             cancellationToken);
 
     /// <summary>
@@ -119,7 +218,7 @@ internal sealed class SankhyaSqlClient(ISankhyaTransport transport, ISankhyaSess
             JsonValueKind.String => DateTime.TryParseExact(value.GetString(), "ddMMyyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date)
                                         ? date
                                         : value.GetString()?.Trim(),
-            JsonValueKind.Number => value.TryGetInt64(out long l) ? l : value.GetDecimal(),
+            JsonValueKind.Number => value.TryGetInt64(out long l) ? (object)l : value.GetDecimal(),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
             _ => null
