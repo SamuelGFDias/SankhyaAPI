@@ -88,6 +88,17 @@ public class MapaFluenteFakeTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_aceita_campo_convertido_para_object()
+    {
+        _fake.WithEntities(Save, ["5"]);
+        System.Linq.Expressions.Expression<Func<OrdemServico, object>> campo = x => x.Status;
+
+        await Ordens().UpdateAsync(new OrdemServico { Numero = 5, Status = StatusOs.Fechada }, u => u.Set(campo));
+
+        Assert.Contains("<STATUS>F</STATUS>", Corpo(_fake.Calls(Save)));
+    }
+
+    [Fact]
     public async Task Update_sem_campos_em_modelo_sem_rastreio_nem_NullableState_e_recusado()
     {
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Ordens().UpdateAsync(new OrdemServico { Numero = 5 }));

@@ -86,7 +86,10 @@ internal static partial class SankhyaErrorClassifier
         if (Is(tsErrorCode, AuthCodes) || serviceName == Login || Has(message, Auth)) return (SankhyaErrorKind.AuthenticationFailed, null);
         if (Has(message, Concurrency)) return (SankhyaErrorKind.Concurrency, null);
         if (Is(tsErrorCode, NotConfiguredCodes) || Has(message, NotConfigured)) return (SankhyaErrorKind.NotConfigured, null);
-        if (NotFoundByKey().IsMatch(message)) return (SankhyaErrorKind.NotFound, null);
+        // "X não existe: PK[...]": no removeRecord é o próprio registro; no saveRecord é um registro referenciado
+        // (por exemplo, "Produto não existe" ao gravar o item), ou seja, valor inválido.
+        if (NotFoundByKey().IsMatch(message))
+            return serviceName == "CRUDServiceProvider.saveRecord" ? (SankhyaErrorKind.InvalidValue, field) : (SankhyaErrorKind.NotFound, null);
         if (Has(message, DuplicateKey)) return (SankhyaErrorKind.DuplicateKey, field);
         if (Has(message, Constraint)) return (SankhyaErrorKind.ConstraintViolation, field);
         if (Is(tsErrorCode, InvalidValueCodes) || Has(message, InvalidValue)) return (SankhyaErrorKind.InvalidValue, field);
