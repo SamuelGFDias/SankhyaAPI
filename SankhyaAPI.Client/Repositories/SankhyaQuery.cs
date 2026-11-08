@@ -122,8 +122,9 @@ public sealed class SankhyaQuery<T> where T : class, new()
 
     private SankhyaQuery<T> AddOrder<TProp>(Expression<Func<T, TProp>> property, bool descending)
     {
-        string name = property.Body is MemberExpression { Member: var m } ? m.Name
-                    : throw new ArgumentException("Use um acesso simples a propriedade, como x => x.Campo.", nameof(property));
+        string name = (property.Body is UnaryExpression { NodeType: ExpressionType.Convert, Operand: var operand } ? operand : property.Body) is MemberExpression { Member: var m }
+                          ? m.Name
+                          : throw new ArgumentException("Use um acesso simples a propriedade, como x => x.Campo.", nameof(property));
         MemberMap member = _repository.Map.Members.FirstOrDefault(x => x.Name == name)
                         ?? throw new ArgumentException($"A propriedade {typeof(T).Name}.{name} não está mapeada.", nameof(property));
         string column = member.Writes.FirstOrDefault()?.Column ?? member.Read?.Columns.FirstOrDefault()

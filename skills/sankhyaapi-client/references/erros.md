@@ -15,10 +15,10 @@ Toda falha do Sankhya ou do transporte chega como `SankhyaException` (namespace 
 | `Concurrency` | "situação de concorrência" (mesma sessão em paralelo) | 409 |
 | `InvalidRequest` | campo/entidade/relacionamento inexistente, sintaxe, DML no executeQuery, serviço inexistente | 400 |
 | `QueryFailed` | "Erro de divisão por zero." | 400 |
-| `InvalidValue` | "Erro de conversão...", "largura acima do limite" (`Field`), "Empresa não encontrada", "TOP não encontrada.", "Data truncation" | 422 |
+| `InvalidValue` | "Erro de conversão...", "largura acima do limite" (`Field`), "Empresa não encontrada", "TOP não encontrada.", "Data truncation", "Produto não existe: PK[...]" ao gravar | 422 |
 | `DuplicateKey` | "Violação da restrição PRIMARY KEY..." | 409 |
 | `ConstraintViolation` | FOREIGN KEY (`Field`), CHECK, NULL em coluna obrigatória | 409 |
-| `BusinessRule` | **trigger** (RAISERROR / RAISE_APPLICATION_ERROR), validação do Sankhya ("O preenchimento do endereço do contato é obrigatório.") | 422 |
+| `BusinessRule` | **trigger** (RAISERROR / RAISE_APPLICATION_ERROR, ex.: "Ano inferior ao limite permitido..."), regra do item ("Não é possível inserir quantidade ímpar para o produto"), validação do Sankhya ("O preenchimento do endereço do contato é obrigatório.") | 422 |
 | `NotFound` | update de chave inexistente, "X não existe: PK[...]" | 404 |
 | `ResultTruncated` | executeQuery acima de 5000 linhas | 422 |
 | `NotConfigured` | `ModifiedSince` sem LOGTABOPER (`CORE_E07537`) | 501 |

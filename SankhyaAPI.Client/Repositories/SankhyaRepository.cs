@@ -27,8 +27,10 @@ public sealed class UpdateFields<T>
         return this;
     }
 
+    // Aceita também x => (object)x.Campo (o compilador embrulha o acesso num Convert).
     private static string MemberName<TProp>(Expression<Func<T, TProp>> property) =>
-        property.Body is MemberExpression { Member: var m } ? m.Name
+        (property.Body is UnaryExpression { NodeType: ExpressionType.Convert, Operand: var operand } ? operand : property.Body) is MemberExpression { Member: var m }
+            ? m.Name
             : throw new ArgumentException("Use um acesso simples a propriedade, como x => x.Campo.", nameof(property));
 }
 

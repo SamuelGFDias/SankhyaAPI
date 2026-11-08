@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using SankhyaAPI.Client.Exceptions;
 using Xunit.Abstractions;
 
@@ -164,6 +165,47 @@ public class NotaRealTests(ITestOutputHelper saida)
         ItemPedido? item = await cliente.Repository<ItemPedido>().GetAsync([existente["NUNOTA"]!, existente["SEQUENCIA"]!]);
 
         Assert.Equal(Convert.ToInt32(existente["CODPROD"]), item!.Produto);
+    }
+
+    /// <summary>
+    /// Provoca as triggers da TGFITE com um update inválido num item existente (inserir item pelo CRUD não é aceito).
+    /// O valor original é lido antes e restaurado no finally, caso o servidor aceite algum dos updates.
+    /// </summary>
+    [RealFact]
+    public async Task Triggers_do_item_de_nota_recusam_update_invalido_com_erro_tipado()
+    {
+        await using SankhyaClient cliente = SankhyaReal.Cliente(SessionMode.Shared);
+        var itens = cliente.Repository<ItemPedido>();
+        Dictionary<string, object?> alvo = (await cliente.Sql.QueryAsDictionaryAsync(
+            "SELECT TOP 1 I.NUNOTA, I.SEQUENCIA FROM TGFITE I JOIN TGFCAB C ON C.NUNOTA = I.NUNOTA WHERE C.STATUSNOTA = 'P' AND C.TIPMOV = 'P' ORDER BY I.NUNOTA DESC")).Single();
+        object nunota = alvo["NUNOTA"]!, sequencia = alvo["SEQUENCIA"]!;
+        ItemPedido original = (await itens.GetAsync([nunota, sequencia]))!;
+
+        // Respostas constatadas na homologação: cada uma tem que virar a categoria esperada.
+        var casos = new (string Nome, Action<ItemPedido> Muda, Expression<Func<ItemPedido, object>> Campo, SankhyaErrorKind Esperado)[]
+        {
+            ("produto inexistente", i => i.Produto = 999999999, x => x.Produto, SankhyaErrorKind.InvalidValue),       // "Produto não existe: PK[...]"
+            ("quantidade negativa", i => i.Quantidade = -1, x => x.Quantidade, SankhyaErrorKind.BusinessRule),       // regra do item
+            ("local inexistente", i => i.Local = 999999999, x => x.Local, SankhyaErrorKind.ConstraintViolation),     // FK_TGFITE_TGFLOC
+        };
+
+        try
+        {
+            foreach ((string nome, Action<ItemPedido> muda, Expression<Func<ItemPedido, object>> campo, SankhyaErrorKind esperado) in casos)
+            {
+                var item = new ItemPedido { Nunota = original.Nunota, Sequencia = original.Sequencia };
+                muda(item);
+                var ex = await Assert.ThrowsAnyAsync<SankhyaException>(() => itens.UpdateAsync(item, u => u.Set(campo)));
+                saida.WriteLine($"[{nome}] {ex.Kind} {(int)ex.SuggestedHttpStatus} field={ex.Field} msg={ex.Message}");
+                Assert.Equal(esperado, ex.Kind);
+            }
+        } finally
+        {
+            await itens.UpdateAsync(original, u => u.Set(x => x.Produto).Set(x => x.Quantidade).Set(x => x.Local));
+        }
+
+        ItemPedido depois = (await itens.GetAsync([nunota, sequencia]))!;
+        Assert.Equal((original.Produto, original.Quantidade, original.Local), (depois.Produto, depois.Quantidade, depois.Local));
     }
 
     [RealFact]
