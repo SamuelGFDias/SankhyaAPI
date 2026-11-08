@@ -15,8 +15,8 @@ public class ErrosFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private UsuarioService Usuarios() => new(_fake.BaseUrl, "usuario", "senha");
-    private ProdutoService Produtos() => new(_fake.BaseUrl, "usuario", "senha");
+    private ISankhyaRepository<Usuario> Usuarios() => _fake.Cliente().Repository<Usuario>("Usuario");
+    private ISankhyaRepository<Produto> Produtos() => _fake.Cliente().Repository<Produto>("Produto");
 
     [Fact]
     public async Task Status_0_sem_mensagem_e_erro()

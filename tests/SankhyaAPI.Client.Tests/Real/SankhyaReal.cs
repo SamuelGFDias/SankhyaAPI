@@ -13,6 +13,16 @@ public static class SankhyaReal
     public static string? Usuario => Valor("SANKHYA_USER");
     public static string? Senha => Valor("SANKHYA_PASSWORD");
 
+    /// <summary>
+    /// Cliente apontando para o Sankhya real. Por padrão, uma sessão por operação, para os testes não dependerem
+    /// uns dos outros.
+    /// </summary>
+    public static SankhyaClient Cliente(SessionMode modo = SessionMode.PerOperation, string? senha = null) =>
+        SankhyaClient.Create(new SankhyaClientOptions
+        {
+            BaseUrl = BaseUrl!, Usuario = Usuario!, Senha = senha ?? Senha!, SessionMode = modo
+        });
+
     public static bool Configurado =>
         !string.IsNullOrWhiteSpace(BaseUrl) && !string.IsNullOrWhiteSpace(Usuario) && !string.IsNullOrWhiteSpace(Senha);
 

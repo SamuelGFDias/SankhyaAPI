@@ -1,7 +1,6 @@
 using System.Xml.Serialization;
 using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.MetaData;
-using SankhyaAPI.Client.Services;
 
 namespace SankhyaAPI.Client.Tests.Support;
 
@@ -63,9 +62,6 @@ public enum SituacaoTeste
     [XmlEnum("P")] Pendente
 }
 
-public class AdTesteService(string baseUrl, string userName, string password)
-    : BaseService<AdTeste>(baseUrl, userName, password, "AD_TESTE");
-
 /// <summary>
 /// Cidade (TSICID, entidade "Cidade"). Na homologação passa de 10 mil linhas: serve para testar limites só lendo.
 /// </summary>
@@ -80,9 +76,6 @@ public class CidadeLinha
     [XmlElement("CODCID")] public int? CodCid { get; set; }
 }
 
-public class CidadeService(string baseUrl, string userName, string password)
-    : BaseService<Cidade>(baseUrl, userName, password, "Cidade");
-
 /// <summary>
 /// Chave composta com um único campo auto-numerado (como item de nota: NUNOTA + SEQUENCIA).
 /// </summary>
@@ -92,12 +85,3 @@ public class ItemNota : SankhyaModelBase
     [Key("SEQUENCIA", true)] public NullableState<int> Sequencia { get; set; }
     [XmlElement("QTDNEG")] public NullableState<decimal> Quantidade { get; set; }
 }
-
-public class ItemNotaService(string baseUrl, string userName, string password)
-    : BaseService<ItemNota>(baseUrl, userName, password, "ItemNota");
-
-public class UsuarioService(string baseUrl, string userName, string password)
-    : BaseService<Usuario>(baseUrl, userName, password, "Usuario");
-
-public class ProdutoService(string baseUrl, string userName, string password)
-    : BaseService<Produto>(baseUrl, userName, password, "Produto");

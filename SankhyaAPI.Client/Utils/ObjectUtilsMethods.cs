@@ -1,26 +1,16 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Reflection;
 using System.Xml.Linq;
 using System.Xml.Serialization;
-using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Extensions;
 using SankhyaAPI.Client.Interfaces;
 using SankhyaAPI.Client.MetaData;
 
 namespace SankhyaAPI.Client.Utils;
 
-public static class ObjectUtilsMethods
+internal static class ObjectUtilsMethods
 {
     #region PublicMethods
-
-    /// <summary>
-    /// Campos pedidos ao Sankhya: as propriedades mapeadas (<c>[XmlElement]</c> ou <c>[Key]</c>), na ordem do modelo.
-    /// A resposta usa essa mesma ordem nos elementos <c>f0, f1, ...</c>.
-    /// </summary>
-    public static List<Field> GetFieldsFromObject(object obj)
-    {
-        return ModelMap.For(obj.GetType()).Mapped.Select(p => new Field { Nome = p.XmlName }).ToList();
-    }
 
     public static string GetFormattedString(object value) =>
         value switch

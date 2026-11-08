@@ -35,6 +35,7 @@ Ambiente sondado: Sankhya com SQL Server 2022. A URL e as credenciais ficam em `
 | No XML, `statusMessage` vem em base64 sobre ISO-8859-1, às vezes dentro de `<![CDATA[...]]>` e com quebra de linha no fim. No JSON, vem em texto puro | H/T |
 | `<tsError tsErrorCode="..." tsErrorLevel="...">` traz um `<statusMessage>` também em base64 | T (fake) |
 | Uma requisição concorrente com sessões diferentes na mesma instância não se mistura (12 chamadas simultâneas) | T |
+| **Duas requisições simultâneas na mesma sessão são recusadas**: "O serviço foi cancelado por situação de concorrência. Essa mesma sessão HTTP fez a requisição duas vezes simultaneamente." Uma sessão só atende uma requisição por vez; para paralelismo, use várias sessões (o pacote mantém um pool, `MaxSessions`) | H/T |
 
 ## 3. Encoding
 

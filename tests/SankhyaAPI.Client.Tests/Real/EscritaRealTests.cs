@@ -1,5 +1,4 @@
 using System.Globalization;
-using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.MetaData;
 using SankhyaAPI.Client.Tests.Support;
 
@@ -13,12 +12,12 @@ namespace SankhyaAPI.Client.Tests.Real;
 [Trait("Category", "RealEscrita")]
 public class EscritaRealTests
 {
-    private static AdTesteService Service() => new(SankhyaReal.BaseUrl!, SankhyaReal.Usuario!, SankhyaReal.Senha!);
+    private static ISankhyaRepository<AdTeste> Service() => SankhyaReal.Cliente().Repository<AdTeste>("AD_TESTE");
 
     [RealFact]
     public async Task Cria_le_e_apaga_um_registro()
     {
-        AdTesteService service = Service();
+        ISankhyaRepository<AdTeste> service = Service();
         int id = Random.Shared.Next(900_000, 1_000_000);
 
         try
@@ -45,7 +44,7 @@ public class EscritaRealTests
     {
         CultureInfo original = CultureInfo.CurrentCulture;
         CultureInfo.CurrentCulture = new CultureInfo("pt-BR");
-        AdTesteService service = Service();
+        ISankhyaRepository<AdTeste> service = Service();
         int id = Random.Shared.Next(900_000, 1_000_000);
 
         try
@@ -77,7 +76,7 @@ public class EscritaRealTests
 
             // Conferência por outro caminho (executeQuery em JSON): se o XML tivesse corrompido o acento na
             // gravação e de novo na leitura, a ida e volta acima passaria; o banco não.
-            Dictionary<string, object?> banco = (await service.QueryAsDictionaryAsync(
+            Dictionary<string, object?> banco = (await SankhyaReal.Cliente().Sql.QueryAsDictionaryAsync(
                 $"SELECT LEN(TEXTO) AS TAMANHO, UNICODE(SUBSTRING(TEXTO, 2, 1)) AS SEGUNDA FROM AD_TESTE WHERE ID = {id}")).Single();
             Assert.Equal(gravado.Texto.Value!.Length, Convert.ToInt32(banco["TAMANHO"]));
             Assert.Equal('ç', (char)Convert.ToInt32(banco["SEGUNDA"]));
@@ -94,7 +93,7 @@ public class EscritaRealTests
     [RealFact]
     public async Task Update_com_Clear_apaga_e_sem_valor_preserva()
     {
-        AdTesteService service = Service();
+        ISankhyaRepository<AdTeste> service = Service();
         int id = Random.Shared.Next(900_000, 1_000_000);
 
         try
@@ -130,7 +129,7 @@ public class EscritaRealTests
     [RealFact]
     public async Task Busca_por_texto_com_acento_encontra_o_que_foi_gravado()
     {
-        AdTesteService service = Service();
+        ISankhyaRepository<AdTeste> service = Service();
         int id = Random.Shared.Next(900_000, 1_000_000);
         string texto = $"Coração {id}";
 
@@ -146,7 +145,7 @@ public class EscritaRealTests
         }
     }
 
-    private static async Task<AdTeste> Ler(AdTesteService service, int id) =>
+    private static async Task<AdTeste> Ler(ISankhyaRepository<AdTeste> service, int id) =>
         (await service.FindAsync("this.ID = ?", [Parameter.Inteiro(id)])).Single();
 
     [RealFact]
@@ -155,7 +154,7 @@ public class EscritaRealTests
         await Assert.ThrowsAsync<ArgumentException>(() => Service().CreateAsync(new AdTeste()));
     }
 
-    private static async Task ApagarSeExistir(AdTesteService service, int id)
+    private static async Task ApagarSeExistir(ISankhyaRepository<AdTeste> service, int id)
     {
         if ((await service.FindAsync("this.ID = ?", [Parameter.Inteiro(id)])).Count > 0)
             await service.DeleteAsync(new AdTeste { Id = id });
