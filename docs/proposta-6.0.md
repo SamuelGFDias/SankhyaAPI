@@ -1,6 +1,6 @@
 # Proposta 6.0 — arquitetura do SankhyaAPI.Client
 
-Status: proposta para decisão (2026-11-07). Substitui as entregas B e C de `plano-correcao.md`, que viram fases desta proposta (seção 9).
+Status: **implementada na 6.0.0** (2026-11-08), nos PRs #38 a #44 e no de documentação. A seção 11 diz onde a implementação ficou diferente do texto abaixo. Esta proposta substitui as entregas B e C de `plano-correcao.md`.
 
 ## 1. Objetivo
 
@@ -320,3 +320,19 @@ Issues: P1 fecha #7, #8, #9, #10 e #11. P2 fecha #16 (com o `NullableState` imut
 6. **Nomes da API nova:** este documento usa nomes em português (`InserirAsync`, `Consultar`, `AtualizarAsync`) por coerência com o domínio Sankhya, mas a 5.x usa inglês (`FindAsync`, `CreateAsync`). As alternativas são português, inglês (`InsertAsync`, `Query`, `UpdateAsync`) ou manter os nomes da 5.x onde a operação é a mesma. Os exemplos acima são só ilustrativos até essa decisão.
 
 Verificado só no fake, a confirmar na P2: chave composta com um campo auto-numerado. Os testes `ChaveCompostaFakeTests` cobrem insert, update e delete, mas falta uma tabela real com chave composta para o teste de homologação.
+
+## 11. Como ficou (diferenças em relação ao texto acima)
+
+Decisões tomadas durante a implementação, depois desta proposta:
+
+- **Sem fachada 5.x** (decisão do usuário): a 6.0 quebra a API direto. A seção 8 não vale.
+- **Nomes**: mantidos os da 5.x onde a operação é a mesma (`FindAsync`, `CreateAsync`, `UpdateAsync`, `DeleteAsync`/`DeleteManyAsync`). O que é novo ficou em inglês: `Query().Where/OrderBy/StreamAsync/ToPageAsync/ToListAsync/FirstOrDefaultAsync`, `GetAsync`, `UpdateAllAsync`, `Track`, `Session.LoginAsync`, `Reports.GenerateAsync`, `Sql.QueryRawAsync/QueryTopAsync/QueryPagedAsync`, `SankhyaEntityMap<T>` com `Entity/Key/Property/Computed(...).Writes/Reads/Joined/Presentation`, `SankhyaType`, `SankhyaTruncatedResultException`. Os nomes em português da seção 5 eram só ilustrativos. As fábricas de `Parameter` ficaram como na 5.2 (`Texto`, `Inteiro`, `Decimal`, `Data`, `DataHora`).
+- **Sessão em pool**: a homologação recusa requisições simultâneas na mesma sessão, então `Shared` virou um pool de até `MaxSessions` sessões exclusivas, não uma sessão única.
+- **Sem Refit e sem `XmlSerializer`**: LINQ to XML/`XmlWriter` e `Utf8JsonWriter`/`JsonDocument`. Não foi preciso `JsonSerializerContext`, porque nada é serializado por reflexão.
+- **Resiliência própria** (sem `Microsoft.Extensions.Http.Resilience`): repetição com espera exponencial, só em operações idempotentes.
+- **Generator**: gera acessores (não o mapa inteiro). O mapa fluente continua montado em tempo de execução, mas sem reflexão nem `Expression.Compile` quando os acessores existem.
+- **`Dialect`** é opção manual (padrão SQL Server), não detectado no login.
+- **`StreamAsync`** não liga `useFileBasedPagination` sozinho: na homologação, o atributo é aceito sem efeito observável.
+- **Relatório**: gera e baixa na mesma sessão. Em `Shared`, a sessão volta ao pool; só `PerOperation` a encerra.
+- **Erros tipados** (pedido posterior do usuário): `SankhyaErrorKind`, `SuggestedHttpStatus`, `ToProblem()` e `VerifyExistenceOnUpdate`. O update de chave inexistente criava o registro, porque o saveRecord é upsert.
+- **Fora do escopo**: o tradutor de expressões (`Where(x => ...)`) e a detecção de dialeto ficaram para depois.

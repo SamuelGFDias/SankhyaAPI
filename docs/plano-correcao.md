@@ -1,5 +1,7 @@
 # Plano de correção — rodada 1 de planejamento
 
+> **Concluído.** A entrega A saiu na 5.2.0. As entregas B e C foram substituídas pela [proposta 6.0](proposta-6.0.md) e implementadas na 6.0.0. Este documento fica como histórico.
+
 Escopo: as issues #1 a #19 abertas pela auditoria, mais as melhorias estruturais que elas pedem (troca de reflexão por source generator, AOT/trimming, DI). Base: `main` depois do merge do PR #20, que já traz a infra de testes (servidor fake + testes reais opt-in).
 
 ## Estratégia
