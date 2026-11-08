@@ -27,6 +27,7 @@ Biblioteca .NET para integração com o ERP Sankhya: CRUD de entidades, consulta
 - [Resiliência](#resiliência)
 - [Source generator e AOT](#source-generator-e-aot)
 - [Testes](#testes)
+- [Skill para agentes de IA](#skill-para-agentes-de-ia)
 - [Licença](#licença)
 
 ## Instalação
@@ -610,6 +611,31 @@ var ex = await Assert.ThrowsAsync<SankhyaBusinessRuleException>(() => cliente.Re
 Assert.Equal("Pedido bloqueado: cliente com títulos vencidos.", ex.Message);
 Assert.Single(fake.Calls("CRUDServiceProvider.saveRecord"));
 ```
+
+## Skill para agentes de IA
+
+O pacote traz uma **skill** que ensina um agente de IA (Claude Code, Codex, Cursor e outros compatíveis com o formato `SKILL.md`) a usar esta biblioteca:
+- setup inicial, com e sem injeção de dependência;
+- mapeamento de tabelas, CRUD, update parcial, consultas, SQL seguro e relatórios;
+- tratamento de erros com status HTTP e testes com o servidor fake;
+- **migração de uma versão anterior para a versão instalada**: a skill lê o `CHANGELOG.md` que vem dentro do pacote e monta a lista de quebras e de mudanças de comportamento entre as duas versões.
+
+Ela vem em `skills/sankhyaapi-client/` dentro do pacote. Depois do `dotnet restore`, copie para a pasta de skills do seu projeto:
+
+```bash
+# Linux/macOS (troque 6.0.0 pela versão instalada)
+mkdir -p .claude/skills
+cp -r ~/.nuget/packages/sankhyaapi.client/6.0.0/skills/sankhyaapi-client .claude/skills/
+```
+
+```powershell
+# Windows
+Copy-Item -Recurse "$env:USERPROFILE\.nuget\packages\sankhyaapi.client\6.0.0\skills\sankhyaapi-client" ".claude\skills\"
+```
+
+Para usar em todos os projetos, copie para `~/.claude/skills/`. Peça ao agente coisas como "configura o SankhyaAPI.Client neste projeto", "mapeia a tabela TGFPAR", "migra do 5.2 para o 6.0" ou "trata os erros do Sankhya na API". Ao atualizar o pacote, copie a skill de novo: ela acompanha a versão.
+
+A pasta da versão também traz o `CHANGELOG.md` e `docs/migracao-6.0.md`, que a skill consulta.
 
 ## Licença
 
