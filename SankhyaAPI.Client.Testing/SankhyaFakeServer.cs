@@ -139,6 +139,27 @@ public sealed class SankhyaFakeServer : IDisposable
             "application/json");
 
     /// <summary>
+    /// Login que devolve uma sessão diferente a cada chamada, na ordem informada (a última se repete), para conferir
+    /// que a operação repetida depois de renovar a sessão usa o id novo.
+    /// </summary>
+    public SankhyaFakeServer WithLoginSequence(params string[] sessionIds)
+    {
+        for (int i = 0; i < sessionIds.Length; i++)
+        {
+            var request = Request.Create().WithPath(ServicePath).WithParam("serviceName", "MobileLoginSP.login").UsingPost();
+            var mapping = _server.Given(request).InScenario("login-sequence");
+            if (i > 0) mapping = mapping.WhenStateIs($"login-{i}");
+            if (i < sessionIds.Length - 1) mapping = mapping.WillSetStateTo($"login-{i + 1}");
+            mapping.RespondWith(Response.Create().WithHeader("Content-Type", "text/xml; charset=ISO-8859-1")
+                                        .WithBody(Xml("MobileLoginSP.login",
+                                            $"<responseBody><jsessionid>{sessionIds[i]}</jsessionid><idusu>{Base64("0")}</idusu></responseBody>"),
+                                            encoding: Encoding.Latin1));
+        }
+
+        return this;
+    }
+
+    /// <summary>
     /// Responde <c>status="3"</c> (sessão expirada) na primeira chamada ao serviço e a resposta normal de entidades depois.
     /// </summary>
     /// <param name="serviceName">Nome do serviço a responder.</param>

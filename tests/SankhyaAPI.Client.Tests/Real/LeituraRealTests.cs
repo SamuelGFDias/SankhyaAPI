@@ -149,6 +149,29 @@ public class LeituraRealTests
     }
 
     [RealFact]
+    public async Task Sessao_do_pool_encerrada_no_servidor_e_renovada_e_a_chamada_repetida_com_a_sessao_nova()
+    {
+        await using SankhyaClient cliente = SankhyaReal.Cliente(SessionMode.Shared);
+        var pool = (SankhyaAPI.Client.Session.SankhyaSession)cliente.Session;
+        var usuarios = cliente.Repository<Usuario>();
+
+        await usuarios.FindAsync("this.CODUSU = 0");
+        string velha = pool.PooledSessionIds.Single();
+
+        // Encerra a sessão do pool direto no servidor, como se tivesse expirado: o cliente não sabe.
+        await EncerrarPorFora($"JSESSIONID={velha}");
+        Assert.False(await SessaoAtiva($"JSESSIONID={velha}"), "a sessão deveria estar encerrada no servidor");
+
+        // A próxima chamada recebe status 3, abre outra sessão e repete: tem que dar certo, com um id novo.
+        Usuario sup = (await usuarios.FindAsync("this.CODUSU = 0")).Single();
+
+        Assert.Equal(0, sup.CodUsu.Value);
+        string nova = pool.PooledSessionIds.Single();
+        Assert.NotEqual(velha, nova);
+        Assert.True(await SessaoAtiva($"JSESSIONID={nova}"));
+    }
+
+    [RealFact]
     public async Task Sessao_compartilhada_se_renova_depois_de_encerrada_por_fora()
     {
         await using SankhyaClient cliente = SankhyaReal.Cliente(SessionMode.Shared);
