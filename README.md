@@ -115,6 +115,7 @@ ISankhyaRepository<Produto> produtos = sankhya.Repository<Produto>();
 | `Timeout` | 100 s | Tempo máximo de cada tentativa de chamada a um serviço. |
 | `MaxRetries` | `2` | Novas tentativas em falha transitória, só em operações idempotentes (ver [Resiliência](#resiliência)). |
 | `Dialect` | `SqlServer` | Banco por trás do Sankhya (`SqlServer` ou `Oracle`), usado para formatar valores no SQL cru. |
+| `VerifyExistenceOnUpdate` | `true` | Confere se as chaves existem antes de cada update. O saveRecord do Sankhya **cria** o registro quando a chave não existe; com a opção ligada, o update lança `SankhyaNotFoundException`. Custa uma consulta por lote. |
 | `AllowHttp` | `false` | Libera `http://`. Só para desenvolvimento: a senha e a sessão trafegam em texto puro. |
 
 Opções inválidas lançam `OptionsValidationException` com a lista de problemas: `BaseUrl` absoluta e terminada em `/mge`, `https` (salvo `AllowHttp`), `Usuario` e `Senha` preenchidos, `Timeout` positivo, `MaxRetries` não negativo e `MaxSessions` de pelo menos 1.
@@ -451,7 +452,7 @@ O SQL roda com os privilégios do usuário de integração.
 O `executeQuery` devolve no máximo 5000 linhas, e não há como mudar isso no servidor. Escolha a API conforme o caso:
 
 - `QueryRawAsync` e `QueryAsDictionaryAsync` lançam `SankhyaTruncatedResultException` quando o servidor corta o resultado. Nunca devolvem um resultado incompleto.
-- `QueryTopAsync<T>(sql, maxRows)` devolve até `maxRows` linhas (no máximo 5000), com `SankhyaRows<T>.HasMore` dizendo se ficaram linhas de fora. Com `maxRows` menor que 5000, o pacote pede uma linha a mais para saber. Com `maxRows = 5000`, `HasMore` fica verdadeiro sempre que vierem 5000 linhas, mesmo sem mais nenhuma.
+- `QueryTopAsync<T>(sql, maxRows)` devolve até `maxRows` linhas (no máximo 4999), com `SankhyaRows<T>.HasMore` dizendo se ficaram linhas de fora. O pacote pede uma linha a mais para saber, porque com `maxRows` o servidor não avisa o corte.
 - `QueryPagedAsync<T>(sql, orderBy, pageSize = 1000)` percorre um resultado de qualquer tamanho com `OFFSET ... FETCH NEXT`:
 
 ```csharp
@@ -488,37 +489,61 @@ await arquivo.Content.CopyToAsync(destino, ct);
 
 ## Erros
 
-| Exceção | Quando acontece |
-|---|---|
-| `SankhyaException` | O Sankhya respondeu com `status` diferente de `1`. Traz `Status`, `ServiceName` e `TsErrorCode`. A mensagem vem com o prefixo `SNK Error:`. |
-| `SankhyaSessionExpiredException` | Sessão inválida ou expirada (`status="3"`). Herda de `SankhyaException`. No modo `Shared`, o pacote já renovou a sessão e repetiu a operação uma vez; chegar aqui é falha de verdade. |
-| `SankhyaTruncatedResultException` | O `executeQuery` cortou o resultado no limite de 5000 linhas. Herda de `SankhyaException`. |
-| `HttpRequestException` | Falha HTTP (4xx ou 5xx), resposta ilegível ou tempo esgotado. Na falha de tempo, a mensagem é "Tempo esgotado na chamada ao Sankhya". |
-| `FormatException` | Um valor recebido do Sankhya não converte para o tipo do campo. A mensagem não traz o valor: ele fica em `ex.Data["Valor"]`, para não ir para o log sem querer. |
-| `ArgumentException`, `ArgumentNullException`, `InvalidOperationException` | Validação feita antes de chamar o servidor: chave ausente ou indevida, update sem campos, mapa inválido, quantidade de `?` diferente da de valores. |
-| `OperationCanceledException` | O `CancellationToken` foi cancelado. |
-| `OptionsValidationException` | Opções de configuração inválidas (ver [Configuração](#configuração)). |
+Toda falha que vem do Sankhya ou do transporte chega como `SankhyaException` (ou uma subclasse), com uma **categoria** em `Kind` e um **status HTTP sugerido** em `SuggestedHttpStatus`. Assim, quem usa o pacote decide o tratamento e a resposta da própria API sem comparar texto. A classificação foi montada sobre as respostas reais de um Sankhya de homologação (tabela completa em [`docs/sankhya-protocolo.md`](https://github.com/SamuelGFDias/SankhyaAPI/blob/main/docs/sankhya-protocolo.md), seção 6.1).
+
+| `Kind` | Quando | HTTP sugerido |
+|---|---|---|
+| `AuthenticationFailed` | Usuário ou senha inválidos (`SankhyaAuthenticationException`) | 401 |
+| `SessionExpired` | Sessão expirada e já renovada uma vez sem sucesso (`SankhyaSessionExpiredException`) | 401 |
+| `Concurrency` | Requisições simultâneas na mesma sessão | 409 |
+| `InvalidRequest` | Entidade, campo ou relacionamento inexistente; expressão ou SQL com erro de sintaxe; parâmetros faltando; DML no executeQuery. Erro de programação. | 400 |
+| `QueryFailed` | A consulta SQL falhou ao executar (ex.: divisão por zero) | 400 |
+| `InvalidValue` | Valor inválido para o campo: conversão, tamanho acima do limite (`Field` traz o campo) | 422 |
+| `DuplicateKey` | Chave primária ou única duplicada | 409 |
+| `ConstraintViolation` | Chave estrangeira, CHECK, campo obrigatório nulo | 409 |
+| `BusinessRule` | Gravação recusada por **regra de negócio**: trigger (RAISERROR, RAISE_APPLICATION_ERROR), evento ou validação do Sankhya (`SankhyaBusinessRuleException`) | 422 |
+| `NotFound` | Update de chave inexistente (`SankhyaNotFoundException`) | 404 |
+| `ResultTruncated` | executeQuery acima de 5000 linhas (`SankhyaTruncatedResultException`) | 422 |
+| `NotConfigured` | Recurso que depende de configuração do Sankhya (ex.: `ModifiedSince` sem LOGTABOPER) | 501 |
+| `Timeout` / `Unavailable` | Tempo esgotado / Sankhya fora do ar, HTTP 5xx, resposta ilegível (`SankhyaTransportException`) | 504 / 503 |
+| `Unknown` | Erro do Sankhya sem categoria reconhecida | 502 |
+
+`Message` é a mensagem do servidor já decodificada e **limpa**: sem prefixo, sem a frase "A transação foi encerrada no gatilho" do SQL Server, sem o código `ORA-20xxx` e a pilha `ORA-06512` do Oracle. Em `BusinessRule`, ela é o texto que a regra escreveu, pronto para mostrar ao usuário final. Para quem guarda regra de negócio em trigger, toda recusa de gravação que não é um erro técnico reconhecido cai em `BusinessRule`.
+
+`TsErrorCode`, `Status`, `ServiceName` e `Field` vêm junto, e `ToProblem()` devolve um `SankhyaProblem` no formato de `ProblemDetails` (RFC 9457):
 
 ```csharp
 using SankhyaAPI.Client.Exceptions;
 
-try
+app.MapPut("/produtos/{id}", async (int id, ProdutoDto dto, ISankhyaRepository<Produto> produtos) =>
 {
-    await produtos.UpdateAsync(produto, u => u.Set(x => x.DescrProd));
-}
-catch (SankhyaSessionExpiredException)
+    try
+    {
+        await produtos.UpdateAsync(dto.ToProduto(id), u => u.Set(x => x.Descricao));
+        return Results.NoContent();
+    }
+    catch (SankhyaException ex)
+    {
+        SankhyaProblem p = ex.ToProblem();
+        return Results.Problem(detail: p.Detail, statusCode: p.Status, title: p.Title, type: p.Type);
+    }
+});
+
+// ou por categoria
+catch (SankhyaException ex) when (ex.Kind == SankhyaErrorKind.BusinessRule)
 {
-    // a sessão já foi renovada e a operação repetida uma vez; chegar aqui é falha de verdade
-}
-catch (SankhyaException ex)
-{
-    Console.Error.WriteLine($"Sankhya recusou {ex.ServiceName} (status {ex.Status}, tsError {ex.TsErrorCode}).");
-}
-catch (FormatException ex)
-{
-    object? valor = ex.Data["Valor"];   // não logue: pode ser dado pessoal
+    return Results.UnprocessableEntity(new { mensagem = ex.Message });
 }
 ```
+
+Fora da `SankhyaException`, ficam só os erros de uso e de configuração:
+
+| Exceção | Quando |
+|---|---|
+| `FormatException` | Um valor recebido do Sankhya não converte para o tipo do campo. A mensagem não traz o valor: ele fica em `ex.Data["Valor"]`, para não ir para o log sem querer. |
+| `ArgumentException`, `ArgumentNullException`, `InvalidOperationException` | Validação antes de chamar o servidor: chave ausente ou indevida, update sem campos, mapa inválido, quantidade de `?` diferente da de valores. |
+| `OperationCanceledException` | O `CancellationToken` foi cancelado. |
+| `OptionsValidationException` | Opções de configuração inválidas. |
 
 ## Observabilidade
 
@@ -534,14 +559,29 @@ Para exportar com OpenTelemetry (pacote do consumidor), registre a fonte `"Sankh
 
 ## Resiliência
 
-- **Timeout.** Cada tentativa de chamada a um serviço tem o `Timeout` da configuração (100 s por padrão). O download do relatório não usa esse timeout: só o `CancellationToken` o interrompe.
+- **Timeout.** Cada tentativa de chamada a um serviço, e o download do relatório, tem o `Timeout` da configuração (100 s por padrão).
 - **Novas tentativas.** Falha transitória (timeout, HTTP 5xx, erro de conexão ou resposta que não é XML legível) é repetida até `MaxRetries` vezes, com espera de 200 ms, 400 ms e assim por diante. Vale só para operações idempotentes: login, loadRecords e executeQuery.
 - **Escritas não se repetem por falha de transporte.** Insert, update e delete não são repetidos automaticamente, porque o servidor pode ter gravado antes de a resposta se perder. A única repetição de escrita é a da sessão expirada (`status="3"`), que não grava nada.
 - **Logout.** Uma falha ao encerrar a sessão é registrada e ignorada. A sessão expira no servidor, e o resultado da operação não se perde.
 
 ## Source generator e AOT
 
-<!-- preenchido na P4 -->
+O pacote traz um **source generator** e **analisadores**, dentro do próprio NuGet: quem instala ganha os dois sem passo extra.
+
+- Para cada modelo usado num `SankhyaEntityMap<T>` ou marcado com `[SankhyaEntity]`, o generator gera acessores diretos (sem reflexão nem compilação de expressões) e os registra num `[ModuleInitializer]`. O mapa usa esses acessores automaticamente.
+- O pacote é marcado `IsAotCompatible` e publica com NativeAOT sem avisos (`samples/AotSmoke`). Para AOT, prefira o mapa fluente; o mapa por atributos ainda descobre as propriedades por reflexão.
+
+Diagnósticos de compilação (erros que, sem eles, só apareceriam em tempo de execução):
+
+| Código | Severidade | Regra |
+|---|---|---|
+| SNK001 | erro | mais de um campo auto-numerado na chave |
+| SNK002 | erro | coluna escrita mais de uma vez no mapa |
+| SNK003 | aviso | propriedade de tipo sem conversão conhecida (informe um `SankhyaType` ou `ISankhyaConverter`) |
+| SNK004 | aviso | campo calculado com `Writes` e sem `Reads` |
+| SNK005 | aviso | SQL cru montado por concatenação (use string interpolada) |
+| SNK006 | aviso | `null` atribuído a `NullableState<T>` (use `Clear()`) |
+| SNK010 | info | modelo inacessível ao código gerado (privado, abstrato, genérico ou sem construtor público sem parâmetros): usa compilação em tempo de execução, sem AOT |
 
 ## Testes
 
@@ -555,9 +595,21 @@ Para exportar com OpenTelemetry (pacote do consumidor), registre a fonte `"Sankh
 
 O pacote `SankhyaAPI.Client.Testing` reúne os auxiliares para testar código que usa o pacote, sem um Sankhya de verdade:
 
-- `SankhyaFakeServer`: servidor HTTP local que imita o `service.sbr` do Sankhya. Você registra as respostas de cada serviço e inspeciona as chamadas recebidas.
-- `CreateClient()`: cria um `SankhyaClient` apontado para o servidor fake, pronto para uso nos testes.
-- `SankhyaMapAssert.RoundTrip`: confere a ida e a volta de um mapa (gravar e ler de volta) sem servidor.
+- `SankhyaFakeServer`: servidor HTTP local que imita o `service.sbr` do Sankhya (XML em ISO-8859-1, mensagens em base64, status 0/1/3, executeQuery em JSON). Registre respostas com `WithEntities`, `WithError`, `WithStatus`, `WithQuery`, `WithPage`, `WithSessionExpiredOnce`, `WithReport`, `WithDelay`, `WithHttpStatus`, e inspecione as chamadas com `Calls(servico)`.
+- `CreateClient(mode, maxRetries, configure)`: cria um `SankhyaClient` apontado para o servidor fake.
+- `SankhyaMapAssert.RoundTrip(exemplo)`: monta o insert de um mapa, devolve as colunas como resposta e lê de volta, sem servidor.
+
+```csharp
+using SankhyaAPI.Client.Testing;
+
+using var fake = new SankhyaFakeServer();
+fake.WithError("CRUDServiceProvider.saveRecord", "Pedido bloqueado: cliente com títulos vencidos.");
+await using SankhyaClient cliente = fake.CreateClient();
+
+var ex = await Assert.ThrowsAsync<SankhyaBusinessRuleException>(() => cliente.Repository<Pedido>().CreateAsync(pedido));
+Assert.Equal("Pedido bloqueado: cliente com títulos vencidos.", ex.Message);
+Assert.Single(fake.Calls("CRUDServiceProvider.saveRecord"));
+```
 
 ## Licença
 

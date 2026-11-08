@@ -19,6 +19,17 @@
 		<NeutralLanguage>pt-BR</NeutralLanguage>
 		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 		<IsAotCompatible>true</IsAotCompatible>
+		<Description>Cliente .NET para o ERP Sankhya (service.sbr): sessão gerenciada, mapa fluente de entidades, CRUD com update parcial, consultas paginadas, SQL seguro, relatórios, erros tipados com status HTTP sugerido e source generator compatível com AOT.</Description>
+		<PackageProjectUrl>https://github.com/SamuelGFDias/SankhyaAPI</PackageProjectUrl>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<!-- Membros públicos sem comentário XML não quebram o build; os principais estão documentados. -->
+		<NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<Deterministic>true</Deterministic>
+		<ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -41,10 +52,7 @@
 
 	<ItemGroup>
 		<None Include="README.md" Pack="true" PackagePath="\" />
-		<None Update="LICENSE.txt">
-			<Pack>True</Pack>
-			<PackagePath>\</PackagePath>
-		</None>
+		<None Include="LICENSE.txt" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
 </Project>

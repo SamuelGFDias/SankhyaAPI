@@ -469,27 +469,28 @@ Atenção à ordem dos argumentos: na 5.x, `Parametro` recebia `(classe, nome, v
 
 ## F15: Erros
 
-Os tipos continuam os mesmos. A 6.0 acrescenta `SankhyaTruncatedResultException`, subclasse de `SankhyaException`.
+Os tipos da 5.2 continuam (`SankhyaException`, `SankhyaSessionExpiredException`, `SankhyaTruncatedResultException`), e a 6.0 acrescenta a **categoria** e o **status HTTP sugerido**. Troque comparação de texto por `Kind`:
 
 ```csharp
-// 5.x e 6.0
-try
-{
-    // ...
-}
-catch (SankhyaSessionExpiredException)
-{
-    // 5.x: a sessão expirou. 6.0, no modo Shared: o pacote já renovou e repetiu uma vez.
-}
-catch (SankhyaException ex)
-{
-    string? status = ex.Status;
-    string? servico = ex.ServiceName;
-    string? codigo = ex.TsErrorCode;
-}
+// 5.x: tratar pela mensagem
+catch (SankhyaException ex) when (ex.Message.Contains("PRIMARY KEY")) { /* duplicado */ }
+catch (HttpRequestException) { /* transporte */ }
+
+// 6.0: tratar pela categoria
+catch (SankhyaException ex) when (ex.Kind == SankhyaErrorKind.DuplicateKey) { /* 409 */ }
+catch (SankhyaBusinessRuleException ex) { return Results.UnprocessableEntity(ex.Message); } // trigger, evento
+catch (SankhyaTransportException ex) { /* ex.Kind é Timeout ou Unavailable */ }
+catch (SankhyaException ex) { return Results.Problem(statusCode: (int)ex.SuggestedHttpStatus, detail: ex.Message); }
 ```
 
-Na 6.0, falha de transporte que estoura o tempo também chega como `HttpRequestException`, com a mensagem "Tempo esgotado na chamada ao Sankhya". Erro de conversão de campo chega como `FormatException` sem o valor, que fica em `ex.Data["Valor"]`.
+Mudanças:
+- `Message` não tem mais o prefixo `SNK Error:`; é a mensagem do servidor limpa.
+- Falha de transporte (HTTP 5xx, conexão, resposta ilegível, tempo esgotado) passa de `HttpRequestException` para `SankhyaTransportException` (subclasse de `SankhyaException`), com a original em `InnerException`.
+- Login inválido é `SankhyaAuthenticationException`.
+- Recusa de gravação por regra de negócio (trigger, evento) é `SankhyaBusinessRuleException`.
+- Update de chave inexistente é `SankhyaNotFoundException`. Na 5.x ele criava o registro em silêncio.
+
+Erro de conversão de campo continua como `FormatException` sem o valor, que fica em `ex.Data["Valor"]`. A tabela completa de categorias está no README, seção "Erros".
 
 ## F16: NullableState em JSON
 
@@ -600,6 +601,8 @@ Estas mudanças não aparecem como erro de compilação. Revise-as depois de com
 13. **Validação da configuração.** `BaseUrl` terminada em `/mge` e `https` (salvo `AllowHttp`) são exigidos na inicialização.
 14. **Cancelamento.** Todos os métodos públicos aceitam `CancellationToken` (opcional, então o código 5.x continua compilando onde não usa o parâmetro).
 15. **Observabilidade.** Há `ActivitySource`, `Meter` e logs estruturados com o nome `SankhyaAPI.Client`. Não há equivalente na 5.x.
+16. **Update de chave inexistente.** O saveRecord do Sankhya cria o registro (upsert). Na 6.0, `VerifyExistenceOnUpdate` (padrão `true`) confere as chaves antes, numa consulta por lote, e lança `SankhyaNotFoundException`. Desligue a opção para manter o comportamento antigo.
+17. **Erros tipados.** `Kind` e `SuggestedHttpStatus` em toda `SankhyaException`. Falha de transporte vira `SankhyaTransportException`, e a mensagem não tem mais o prefixo `SNK Error:` (ver F15).
 
 ## Checklist
 

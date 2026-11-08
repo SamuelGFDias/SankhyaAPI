@@ -1,6 +1,6 @@
 # Changelog
 
-## 6.0.0 (em desenvolvimento)
+## 6.0.0
 
 Versão com quebra de API, sem camada de compatibilidade com a 5.x. O guia de migração fica em `docs/migracao-6.0.md`.
 
@@ -35,6 +35,14 @@ Versão com quebra de API, sem camada de compatibilidade com a 5.x. O guia de mi
 - **SQL cru seguro** (#29): `ISankhyaSql` recebe `SankhyaSql`, uma string interpolada que escapa e formata cada valor pelo tipo (dialeto SQL Server ou Oracle em `SankhyaClientOptions.Dialect`). `SankhyaSql.Raw` serve para trechos fixos.
 - **`QueryPagedAsync`** percorre resultados de qualquer tamanho com `OFFSET ... FETCH` e recusa SQL com `ORDER BY` próprio. **`QueryTopAsync`** limita com `maxRows` e avisa se há mais linhas (pede uma a mais, porque o servidor não marca `burstLimit` com `maxRows`).
 - Números inteiros do executeQuery voltam como `long` no dicionário (antes, `decimal`).
+
+### Pacotes, testes e documentação (P5)
+
+- **`SankhyaAPI.Client.Testing`** (#33): servidor fake do `service.sbr` (WireMock.Net), `CreateClient()` e `SankhyaMapAssert.RoundTrip`, publicado junto pelo workflow.
+- **Benchmark** do mapeamento (#35) em `benchmarks/`.
+- **Metadados do pacote** (#19): descrição, documentação XML, símbolos (`snupkg`), SourceLink, build determinístico no CI e licença sem aceite obrigatório.
+- **Superfície pública reduzida** (#34): envelopes, cliente Refit, helpers de reflexão, `SankhyaModelBase`, `XmlSerialable`, `IProxysable` e `SankhyaObjectKey` saíram. Chamadas livres ficam em `ISankhyaTransport`.
+- README reescrito, guia de migração em `docs/migracao-6.0.md` e referência do protocolo em `docs/sankhya-protocolo.md`.
 
 ### Erros tipados
 
