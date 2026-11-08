@@ -23,6 +23,7 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="SankhyaAPI.Client.Tests" />
+		<InternalsVisibleTo Include="SankhyaAPI.Client.Benchmarks" />
 	</ItemGroup>
 
 	<ItemGroup>
