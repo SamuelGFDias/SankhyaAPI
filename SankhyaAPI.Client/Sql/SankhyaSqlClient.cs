@@ -122,7 +122,7 @@ internal sealed partial class SankhyaSqlClient(ISankhyaTransport transport, ISan
     [System.Text.RegularExpressions.GeneratedRegex(@"^ORDER\s+BY\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
     private static partial System.Text.RegularExpressions.Regex OrderByAt();
 
-    private static List<T> Map<T>(JsonDocument document)
+    internal static List<T> Map<T>(JsonDocument document)
         where T : class, new()
     {
         (List<(string Name, int Index)> columns, JsonElement rows) = Read(document);
