@@ -45,7 +45,7 @@ public sealed record Parameter(string Type, string Value)
             DateOnly d => Data(d),
             System.DateTime dt => DataHora(dt),
             DateTimeOffset dto => DataHora(dto.DateTime),
-            Enum e => Texto(Utils.ObjectUtilsMethods.GetXmlEnumValue(e)),
+            Enum e => Texto(Mapping.SankhyaFormat.EnumCode(e)),
             _ => throw new ArgumentException($"Tipo sem conversão para parâmetro do Sankhya: {value.GetType().Name}.", nameof(value))
         };
 }

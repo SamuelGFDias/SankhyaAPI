@@ -1,6 +1,6 @@
 using System.Globalization;
 using SankhyaAPI.Client.Exceptions;
-using SankhyaAPI.Client.MetaData;
+
 using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SankhyaAPI.Client.Configuration;
+using SankhyaAPI.Client.Mapping;
 using SankhyaAPI.Client.Reports;
 using SankhyaAPI.Client.Repositories;
 using SankhyaAPI.Client.Session;
@@ -57,9 +58,10 @@ public sealed class SankhyaClient : IAsyncDisposable
     public ISankhyaReports Reports { get; }
 
     /// <summary>
-    /// Repositório de uma entidade, pelo nome da instância no Sankhya (por exemplo <c>Produto</c>).
+    /// Repositório do modelo, pelo mapa registrado (<see cref="SankhyaMaps.Register{TMap}"/> ou <c>AddEntity</c>) ou pelos
+    /// atributos. <paramref name="entityName"/> substitui o nome da entidade do mapa.
     /// </summary>
-    public ISankhyaRepository<T> Repository<T>(string entityName) where T : class, new() =>
+    public ISankhyaRepository<T> Repository<T>(string? entityName = null) where T : class, new() =>
         new SankhyaRepository<T>(Transport, Session, entityName);
 
     public async ValueTask DisposeAsync()
@@ -79,9 +81,14 @@ public interface ISankhyaBuilder
     IServiceCollection Services { get; }
 
     /// <summary>
-    /// Registra <see cref="ISankhyaRepository{T}"/> para a entidade informada.
+    /// Registra o mapa <typeparamref name="TMap"/> e o <see cref="ISankhyaRepository{T}"/> do modelo.
     /// </summary>
-    ISankhyaBuilder AddRepository<T>(string entityName) where T : class, new();
+    ISankhyaBuilder AddEntity<T, TMap>() where T : class, new() where TMap : SankhyaEntityMap<T>, new();
+
+    /// <summary>
+    /// Registra <see cref="ISankhyaRepository{T}"/> para um modelo mapeado por atributos.
+    /// </summary>
+    ISankhyaBuilder AddRepository<T>(string? entityName = null) where T : class, new();
 }
 
 public static class SankhyaServiceCollectionExtensions
@@ -94,7 +101,7 @@ public static class SankhyaServiceCollectionExtensions
     /// <example>
     /// <code>
     /// builder.Services.AddSankhya(o => builder.Configuration.GetSection("Sankhya").Bind(o))
-    ///                 .AddRepository&lt;Produto&gt;("Produto");
+    ///                 .AddEntity&lt;Produto, ProdutoMap&gt;();
     /// </code>
     /// </example>
     public static ISankhyaBuilder AddSankhya(this IServiceCollection services, Action<SankhyaClientOptions> configure)
@@ -129,7 +136,13 @@ public static class SankhyaServiceCollectionExtensions
     {
         public IServiceCollection Services { get; } = services;
 
-        public ISankhyaBuilder AddRepository<T>(string entityName) where T : class, new()
+        public ISankhyaBuilder AddEntity<T, TMap>() where T : class, new() where TMap : SankhyaEntityMap<T>, new()
+        {
+            SankhyaMaps.Register<TMap>();
+            return AddRepository<T>();
+        }
+
+        public ISankhyaBuilder AddRepository<T>(string? entityName = null) where T : class, new()
         {
             Services.TryAddSingleton<ISankhyaRepository<T>>(sp => sp.GetRequiredService<SankhyaClient>().Repository<T>(entityName));
             return this;

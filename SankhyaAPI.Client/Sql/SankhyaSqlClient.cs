@@ -3,7 +3,7 @@ using System.Text.Json;
 using SankhyaAPI.Client.Exceptions;
 using SankhyaAPI.Client.Session;
 using SankhyaAPI.Client.Transport;
-using SankhyaAPI.Client.Utils;
+using SankhyaAPI.Client.Mapping;
 
 namespace SankhyaAPI.Client.Sql;
 
@@ -37,20 +37,19 @@ internal sealed class SankhyaSqlClient(ISankhyaTransport transport, ISankhyaSess
         using JsonDocument document = await ExecuteAsync(sql, cancellationToken);
         (List<(string Name, int Index)> columns, JsonElement rows) = Read(document);
 
-        ModelMap map = ModelMap.For<T>();
+        EntityMap map = SankhyaMaps.ForRow(typeof(T));
         var byName = columns.ToDictionary(c => c.Name, c => c.Index, StringComparer.OrdinalIgnoreCase);
-        List<(PropertyMap Property, int Index)> targets = map.Properties
-            .Select(p => (Property: p, Found: byName.TryGetValue(p.XmlName ?? p.Name, out int index), Index: index))
-            .Where(t => t.Found)
-            .Select(t => (t.Property, t.Index))
+        List<(MemberMap Member, int[] Indexes)> targets = map.Members
+            .Where(m => m.Read != null && m.Set != null && m.Read.Columns.All(byName.ContainsKey))
+            .Select(m => (m, m.Read!.Columns.Select(c => byName[c]).ToArray()))
             .ToList();
 
         var result = new List<T>(rows.GetArrayLength());
         foreach (JsonElement row in rows.EnumerateArray())
         {
-            var item = new T();
-            foreach ((PropertyMap property, int index) in targets)
-                property.SetValue(item, ObjectUtilsMethods.ConvertForPropertyType(AsText(row[index]), property.Property));
+            var item = (T)map.Create();
+            foreach ((MemberMap member, int[] indexes) in targets)
+                member.Assign(item, member.Read!.Compose(indexes.Select(i => (string?)AsText(row[i])).ToArray()));
             result.Add(item);
         }
 
