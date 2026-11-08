@@ -2,6 +2,8 @@
 
 	<PropertyGroup>
 		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+		<!-- SDK 8 não conhece net10.0: o gate roda net8.0 com SankhyaSoNet8=true. -->
+		<TargetFrameworks Condition="'$(SankhyaSoNet8)' == 'true'">net8.0</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<Title>SankhyaAPI</Title>
@@ -16,6 +18,7 @@
 		<PackageTags>Sankhya;ERP;Integracao</PackageTags>
 		<NeutralLanguage>pt-BR</NeutralLanguage>
 		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<IsAotCompatible>true</IsAotCompatible>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -26,6 +29,12 @@
 		<PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+	</ItemGroup>
+
+	<!-- O generator e os analisadores vão dentro do pacote, em analyzers/dotnet/cs: quem instala ganha sem passo extra. -->
+	<ItemGroup>
+		<ProjectReference Include="..\SankhyaAPI.Client.Generators\SankhyaAPI.Client.Generators.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+		<None Include="..\SankhyaAPI.Client.Generators\bin\$(Configuration)\netstandard2.0\SankhyaAPI.Client.Generators.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>

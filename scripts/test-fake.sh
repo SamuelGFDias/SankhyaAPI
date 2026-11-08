@@ -8,4 +8,4 @@ run() { # imagem, framework, propriedades extras
     bash -c "dotnet test -c Release -f $2 $3 -p:SANKHYA_SEM_CREDENCIAIS=1 2>&1 | grep -E 'warning|error|Failed |Passed!|Failed!|Assert|Expected|Actual|Exception :' | sort -u"
 }
 run mcr.microsoft.com/dotnet/sdk:10.0 net10.0 ""
-run mcr.microsoft.com/dotnet/sdk:8.0 net8.0 "-p:TargetFrameworks=net8.0"
+run mcr.microsoft.com/dotnet/sdk:8.0 net8.0 "-p:SankhyaSoNet8=true"

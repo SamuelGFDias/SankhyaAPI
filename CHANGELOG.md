@@ -36,6 +36,13 @@ Versão com quebra de API, sem camada de compatibilidade com a 5.x. O guia de mi
 - **`QueryPagedAsync`** percorre resultados de qualquer tamanho com `OFFSET ... FETCH` e recusa SQL com `ORDER BY` próprio. **`QueryTopAsync`** limita com `maxRows` e avisa se há mais linhas (pede uma a mais, porque o servidor não marca `burstLimit` com `maxRows`).
 - Números inteiros do executeQuery voltam como `long` no dicionário (antes, `decimal`).
 
+### Source generator e AOT (P4)
+
+- **Source generator** empacotado no próprio NuGet (`analyzers/dotnet/cs`). Para cada modelo usado num `SankhyaEntityMap<T>` ou marcado com `[SankhyaEntity]`, gera acessores diretos e se registra por `[ModuleInitializer]`. Com isso, o pacote não usa reflexão nem compila expressões em tempo de execução (#17).
+- **Diagnósticos de compilação**: SNK001 (mais de um auto-numerado na chave), SNK002 (coluna repetida), SNK003 (tipo sem conversão), SNK004 (campo calculado sem `Reads`), SNK005 (SQL montado por concatenação), SNK006 (`null` atribuído a `NullableState`), SNK010 (modelo inacessível ao código gerado, sem AOT).
+- **`IsAotCompatible`** com zero avisos de trimming e AOT. `samples/AotSmoke` publica com NativeAOT e avisos como erro.
+- Correção: coluna vazia numa propriedade de tipo de valor não anulável deixa o valor padrão, em vez de falhar.
+
 ## 5.2.0
 
 Correções da auditoria (entrega A de `docs/plano-correcao.md`). Nenhuma assinatura pública mudou, mas há mudanças de comportamento, marcadas com ⚠.

@@ -195,6 +195,8 @@ internal static class SankhyaFormat
         return fromCode.TryGetValue(code, out object? value) ? value : throw new FormatException("Código sem opção correspondente no enum.");
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "O trimmer preserva os campos de enums usados; os códigos vêm de [XmlEnum] nesses campos.")]
     private static (Dictionary<object, string>, Dictionary<string, object>) Codes(Type enumType) =>
         EnumCodes.GetOrAdd(enumType, t =>
         {
