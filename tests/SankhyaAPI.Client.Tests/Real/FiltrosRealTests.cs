@@ -1,4 +1,3 @@
-using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Real;
@@ -14,8 +13,8 @@ public sealed class MassaAdTeste : IAsyncLifetime
     public int PrimeiroId { get; } = Random.Shared.Next(800_000, 890_000);
     public string Marcador { get; } = "MASSA-" + Guid.NewGuid().ToString("N")[..8];
 
-    public AdTesteService Service { get; } = SankhyaReal.Configurado
-        ? new(SankhyaReal.BaseUrl!, SankhyaReal.Usuario!, SankhyaReal.Senha!)
+    public ISankhyaRepository<AdTeste> Service { get; } = SankhyaReal.Configurado
+        ? SankhyaReal.Cliente().Repository<AdTeste>("AD_TESTE")
         : null!;
 
     public List<AdTeste> Registros { get; } = [];
@@ -53,7 +52,7 @@ public sealed class MassaAdTeste : IAsyncLifetime
 
         List<AdTeste> existentes = await Service.FindAsync(Escopo, ParametrosDoEscopo);
         if (existentes.Count > 0)
-            await Service.DeleteAsync(existentes.Select(r => new AdTeste { Id = r.Id }).ToList());
+            await Service.DeleteManyAsync(existentes.Select(r => new AdTeste { Id = r.Id }).ToList());
     }
 }
 
@@ -63,7 +62,7 @@ public sealed class MassaAdTeste : IAsyncLifetime
 [Trait("Category", "RealEscrita")]
 public class FiltrosRealTests(MassaAdTeste massa) : IClassFixture<MassaAdTeste>
 {
-    private AdTesteService Service => massa.Service;
+    private ISankhyaRepository<AdTeste> Service => massa.Service;
 
     private Task<List<AdTeste>> Buscar(string filtro, params Parameter[] parametros) =>
         Service.FindAsync($"{massa.Escopo} AND ({filtro})", [..massa.ParametrosDoEscopo, ..parametros], "this.ID");
@@ -197,7 +196,7 @@ public class FiltrosRealTests(MassaAdTeste massa) : IClassFixture<MassaAdTeste>
 [Trait("Category", "Real")]
 public class LimitesRealTests
 {
-    private static CidadeService Cidades() => new(SankhyaReal.BaseUrl!, SankhyaReal.Usuario!, SankhyaReal.Senha!);
+    private static ISankhyaRepository<Cidade> Cidades() => SankhyaReal.Cliente().Repository<Cidade>("Cidade");
 
     [RealFact]
     public async Task FindAsync_sem_pagina_traz_mais_de_5_mil_registros()
@@ -221,8 +220,8 @@ public class LimitesRealTests
     [RealFact]
     public async Task QueryRawAsync_acima_de_5000_linhas_lanca_em_vez_de_cortar()
     {
-        var ex = await Assert.ThrowsAsync<SankhyaAPI.Client.Exceptions.SankhyaException>(
-            () => Cidades().QueryRawAsync<CidadeLinha>("SELECT CODCID FROM TSICID"));
+        var ex = await Assert.ThrowsAsync<SankhyaAPI.Client.Exceptions.SankhyaTruncatedResultException>(
+            () => SankhyaReal.Cliente().Sql.QueryRawAsync<CidadeLinha>("SELECT CODCID FROM TSICID"));
 
         Assert.Contains("5000", ex.Message);
     }
@@ -230,7 +229,7 @@ public class LimitesRealTests
     [RealFact]
     public async Task QueryRawAsync_com_ate_5000_linhas_vem_inteiro()
     {
-        List<CidadeLinha> linhas = await Cidades().QueryRawAsync<CidadeLinha>("SELECT TOP 5000 CODCID FROM TSICID ORDER BY CODCID");
+        List<CidadeLinha> linhas = await SankhyaReal.Cliente().Sql.QueryRawAsync<CidadeLinha>("SELECT TOP 5000 CODCID FROM TSICID ORDER BY CODCID");
 
         Assert.Equal(5000, linhas.Count);
     }
@@ -238,7 +237,7 @@ public class LimitesRealTests
     [RealFact]
     public async Task QueryRawAsync_paginado_com_OFFSET_traz_o_resto()
     {
-        List<CidadeLinha> linhas = await Cidades().QueryRawAsync<CidadeLinha>(
+        List<CidadeLinha> linhas = await SankhyaReal.Cliente().Sql.QueryRawAsync<CidadeLinha>(
             "SELECT CODCID FROM TSICID ORDER BY CODCID OFFSET 5000 ROWS FETCH NEXT 5000 ROWS ONLY");
 
         Assert.NotEmpty(linhas);

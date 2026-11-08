@@ -1,5 +1,22 @@
 # Changelog
 
+## 6.0.0 (em desenvolvimento)
+
+Versão com quebra de API, sem camada de compatibilidade com a 5.x. O guia de migração fica em `docs/migracao-6.0.md`.
+
+### Núcleo (P1)
+
+- **Transporte próprio, sem Refit** (#30, #18). `HttpClient` pelo `IHttpClientFactory`, sem `CookieContainer`: a sessão só vai no header que o pacote monta (#8). Timeout por chamada (padrão de 100 s) e https obrigatório, salvo `AllowHttp` para desenvolvimento. Envelopes XML com LINQ to XML/`XmlWriter` em UTF-8 e JSON com `Utf8JsonWriter`/`JsonDocument`, sem `XmlSerializer` nem serialização por reflexão.
+- **`SankhyaClient`** (`SankhyaClient.Create(options)` ou `services.AddSankhya(...)`) com `Session`, `Repository<T>(entidade)`, `Sql`, `Reports` e `Transport` (#7).
+- **Opções validadas na inicialização** (`SankhyaClientOptions`, `ValidateOnStart`): URL absoluta terminada em `/mge`, https, usuário e senha.
+- **Sessão** (#9). O padrão é `Shared`, um pool de até `MaxSessions` sessões reaproveitadas, uma operação por vez em cada, porque o Sankhya recusa requisições simultâneas na mesma sessão. Sessão expirada (`status="3"`) é renovada e a operação repetida uma vez. Logout no `DisposeAsync`. `PerOperation` mantém o comportamento da 5.x. `Session.LoginAsync/LogoutAsync` servem para sessão explícita.
+- **`CancellationToken`** em todos os métodos públicos (#10).
+- **Relatórios** (#11). `Reports.GenerateAsync(codigo, parametros)` gera e baixa o arquivo na mesma sessão e devolve `SankhyaReportFile` com conteúdo, `ContentType`, formato e permissões.
+- **Resiliência** (#32): nova tentativa só em falha transitória de transporte e só em operações idempotentes (login, loadRecords, executeQuery). Escritas nunca se repetem por falha de transporte.
+- **Observabilidade** (#31): logs estruturados (`LoggerMessage`), `ActivitySource` e `Meter` `SankhyaAPI.Client`, sem valores de campo, parâmetro ou SQL.
+- **Target frameworks** `net8.0` e `net10.0`. Saem as dependências Refit, Refit.Xml, Refit.HttpClientFactory, Azure.Core e Swashbuckle.
+- `SankhyaTruncatedResultException` para o corte de 5000 linhas do executeQuery.
+
 ## 5.2.0
 
 Correções da auditoria (entrega A de `docs/plano-correcao.md`). Nenhuma assinatura pública mudou, mas há mudanças de comportamento, marcadas com ⚠.

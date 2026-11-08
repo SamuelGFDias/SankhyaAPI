@@ -1,4 +1,3 @@
-using SankhyaAPI.Client.Envelopes;
 using SankhyaAPI.Client.Interfaces;
 using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
@@ -16,8 +15,8 @@ public class LeituraEntidadesFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ProdutoService Produtos() => new(_fake.BaseUrl, "usuario", "senha");
-    private UsuarioService Usuarios() => new(_fake.BaseUrl, "usuario", "senha");
+    private ISankhyaRepository<Produto> Produtos() => _fake.Cliente().Repository<Produto>("Produto");
+    private ISankhyaRepository<Usuario> Usuarios() => _fake.Cliente().Repository<Usuario>("Usuario");
 
     [Fact]
     public async Task Colunas_sao_mapeadas_pela_metadata_mesmo_fora_de_ordem()
@@ -94,7 +93,7 @@ public class LeituraEntidadesFakeTests : IDisposable
             [Parameter.Texto(valorMalicioso), Parameter.Inteiro(0)],
             "this.CODUSU");
 
-        string body = _fake.Chamadas(Load).Single().RequestMessage.Body!;
+        string body = _fake.Chamadas(Load).Single().RequestMessage!.Body!;
         Assert.Contains("<expression>this.NOMEUSU = ? AND this.CODUSU = ?</expression>", body);
         Assert.Contains("<parameter type=\"S\">X' OR 1=1 --</parameter>", body);
         Assert.Contains("<parameter type=\"I\">0</parameter>", body);
@@ -105,10 +104,10 @@ public class LeituraEntidadesFakeTests : IDisposable
     public async Task Filtro_parametrizado_e_acessivel_pela_interface()
     {
         _fake.ComEntidades(Load, ["0", "SUP"]);
-        IBaseService<Usuario> service = Usuarios();
+        ISankhyaRepository<Usuario> service = Usuarios();
 
         Assert.Single(await service.FindAsync("this.CODUSU = ?", [Parameter.Inteiro(0)]));
-        Assert.Contains("<parameter type=\"I\">0</parameter>", _fake.Chamadas(Load).Single().RequestMessage.Body);
+        Assert.Contains("<parameter type=\"I\">0</parameter>", _fake.Chamadas(Load).Single().RequestMessage!.Body);
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public class LeituraEntidadesFakeTests : IDisposable
 
         SankhyaPage<Usuario> pagina = await Usuarios().FindPageAsync("1 = 1", null, 2, "this.CODUSU");
 
-        string body = _fake.Chamadas(Load).Single().RequestMessage.Body!;
+        string body = _fake.Chamadas(Load).Single().RequestMessage!.Body!;
         Assert.Contains("disableRowsLimit=\"false\"", body);
         Assert.Contains("offsetPage=\"2\"", body);
         Assert.Equal(2, pagina.Page);
@@ -134,7 +133,7 @@ public class LeituraEntidadesFakeTests : IDisposable
 
         await Usuarios().FindAsync("1 = 1");
 
-        string body = _fake.Chamadas(Load).Single().RequestMessage.Body!;
+        string body = _fake.Chamadas(Load).Single().RequestMessage!.Body!;
         Assert.Contains("disableRowsLimit=\"true\"", body);
         Assert.DoesNotContain("offsetPage", body);
     }
@@ -146,7 +145,7 @@ public class LeituraEntidadesFakeTests : IDisposable
 
         await Usuarios().FindAsync("this.NOMEUSU = ?", [Parameter.Texto("JOÃO")]);
 
-        var request = _fake.Chamadas(Load).Single().RequestMessage;
+        var request = _fake.Chamadas(Load).Single().RequestMessage!;
         byte[] bytes = request.BodyAsBytes!;
         string contentType = request.Headers!["Content-Type"].Single();
 
@@ -163,7 +162,7 @@ public class LeituraEntidadesFakeTests : IDisposable
 
         await Produtos().UpdateAsync(new Produto { CodProd = 10, DescrProd = "AÇÃO" });
 
-        var request = _fake.Chamadas("CRUDServiceProvider.saveRecord").Single().RequestMessage;
+        var request = _fake.Chamadas("CRUDServiceProvider.saveRecord").Single().RequestMessage!;
         Assert.Contains("utf-8", request.Headers!["Content-Type"].Single(), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("<DESCRPROD>AÇÃO</DESCRPROD>", System.Text.Encoding.UTF8.GetString(request.BodyAsBytes!));
     }

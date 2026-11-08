@@ -21,8 +21,8 @@ public class CrudFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private UsuarioService Usuarios() => new(_fake.BaseUrl, "usuario", "senha");
-    private ProdutoService Produtos() => new(_fake.BaseUrl, "usuario", "senha");
+    private ISankhyaRepository<Usuario> Usuarios() => _fake.Cliente().Repository<Usuario>("Usuario");
+    private ISankhyaRepository<Produto> Produtos() => _fake.Cliente().Repository<Produto>("Produto");
 
     [Fact]
     public async Task FindAsync_faz_login_com_credenciais_e_usa_cookie_da_sessao()
@@ -31,11 +31,11 @@ public class CrudFakeTests : IDisposable
 
         await Usuarios().FindAsync("this.CODUSU = 0");
 
-        string loginBody = _fake.Chamadas(Login).Single().RequestMessage.Body!;
+        string loginBody = _fake.Chamadas(Login).Single().RequestMessage!.Body!;
         Assert.Contains("<NOMUSU>usuario</NOMUSU>", loginBody);
         Assert.Contains("<INTERNO>senha</INTERNO>", loginBody);
 
-        var load = _fake.Chamadas(Load).Single().RequestMessage;
+        var load = _fake.Chamadas(Load).Single().RequestMessage!;
         Assert.Contains($"JSESSIONID={SankhyaFakeServer.SessionId}", load.Headers!["Cookie"].Single());
         Assert.Contains("this.CODUSU = 0", load.Body);
         Assert.Contains("rootEntity=\"Usuario\"", load.Body);
@@ -70,7 +70,7 @@ public class CrudFakeTests : IDisposable
 
         await Produtos().UpdateAsync(produto);
 
-        string body = _fake.Chamadas(Save).Single().RequestMessage.Body!;
+        string body = _fake.Chamadas(Save).Single().RequestMessage!.Body!;
         Assert.Contains("serviceName=\"CRUDServiceProvider.saveRecord\"", body);
         Assert.Contains("<key>", body);
         Assert.Contains("<CODPROD>10</CODPROD>", body);
@@ -87,7 +87,7 @@ public class CrudFakeTests : IDisposable
 
         await Produtos().UpdateAsync(produto);
 
-        Assert.Contains("<DESCRPROD />", _fake.Chamadas(Save).Single().RequestMessage.Body);
+        Assert.Contains("<DESCRPROD />", _fake.Chamadas(Save).Single().RequestMessage!.Body);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public class CrudFakeTests : IDisposable
 
         Produto? criado = await Produtos().CreateAsync(new Produto { DescrProd = "NOVO" });
 
-        string body = _fake.Chamadas(Save).Single().RequestMessage.Body!;
+        string body = _fake.Chamadas(Save).Single().RequestMessage!.Body!;
         Assert.DoesNotContain("<CODPROD>", body);
         Assert.Equal(99, criado!.CodProd.Value);
     }
@@ -126,7 +126,7 @@ public class CrudFakeTests : IDisposable
 
         Usuario? criado = await Usuarios().CreateAsync(new Usuario { CodUsu = 7, NomeUsu = "NOVO" });
 
-        Assert.Contains("<CODUSU>7</CODUSU>", _fake.Chamadas(Save).Single().RequestMessage.Body);
+        Assert.Contains("<CODUSU>7</CODUSU>", _fake.Chamadas(Save).Single().RequestMessage!.Body);
         Assert.Equal(7, criado!.CodUsu.Value);
     }
 
@@ -143,7 +143,7 @@ public class CrudFakeTests : IDisposable
 
         await Produtos().DeleteAsync(new Produto { CodProd = 10 });
 
-        string body = _fake.Chamadas(Remove).Single().RequestMessage.Body!;
+        string body = _fake.Chamadas(Remove).Single().RequestMessage!.Body!;
         Assert.Contains("<id>", body);
         Assert.Contains("<CODPROD>10</CODPROD>", body);
     }
@@ -163,7 +163,7 @@ public class CrudFakeTests : IDisposable
 
             Produto? salvo = await Produtos().UpdateAsync(produto);
 
-            string body = _fake.Chamadas(Save).Single().RequestMessage.Body!;
+            string body = _fake.Chamadas(Save).Single().RequestMessage!.Body!;
             Assert.Contains("<PRECO>1234.56</PRECO>", body);
             Assert.Contains("<DTALTER>07/11/2026 10:30:00</DTALTER>", body);
             Assert.Contains("<ATIVO>S</ATIVO>", body);
@@ -224,7 +224,7 @@ public class CrudFakeTests : IDisposable
 
         await Usuarios().FindAsync("1 = 1");
 
-        Assert.Equal(SankhyaFakeServer.ServicePath, _fake.Chamadas(Logout).Single().RequestMessage.Path);
+        Assert.Equal(SankhyaFakeServer.ServicePath, _fake.Chamadas(Logout).Single().RequestMessage!.Path);
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public class CrudFakeTests : IDisposable
 
         await Usuarios().FindAsync("1 = 1");
 
-        string cookie = _fake.Chamadas(Logout).Single().RequestMessage.Headers!["Cookie"].Single();
+        string cookie = _fake.Chamadas(Logout).Single().RequestMessage!.Headers!["Cookie"].Single();
         Assert.StartsWith($"JSESSIONID={SankhyaFakeServer.SessionId}", cookie);
     }
 }

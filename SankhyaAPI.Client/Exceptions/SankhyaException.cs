@@ -3,9 +3,6 @@ namespace SankhyaAPI.Client.Exceptions;
 /// <summary>
 /// Erro devolvido pelo Sankhya: a resposta chegou (HTTP 200), mas com <c>status</c> diferente de <c>1</c>.
 /// </summary>
-/// <remarks>
-/// Herda de <see cref="Exception"/>: quem já fazia <c>catch (Exception)</c> continua funcionando.
-/// </remarks>
 public class SankhyaException : Exception
 {
     public SankhyaException(
@@ -39,7 +36,7 @@ public class SankhyaException : Exception
 
 /// <summary>
 /// A sessão usada na chamada não vale mais (<c>status="3"</c>, "Não autorizado."): expirou, foi encerrada
-/// ou nunca existiu. Repetir a operação com um novo login resolve.
+/// ou nunca existiu. Nada foi executado no servidor; repetir com um novo login é seguro.
 /// </summary>
 public class SankhyaSessionExpiredException(
     string message,
@@ -47,3 +44,10 @@ public class SankhyaSessionExpiredException(
     string? serviceName = null,
     string? tsErrorCode = null)
     : SankhyaException(message, status, serviceName, tsErrorCode);
+
+/// <summary>
+/// O executeQuery cortou o resultado no limite fixo de 5000 linhas do servidor (<c>burstLimit</c>).
+/// Pagine a consulta (<c>QueryPagedAsync</c> ou <c>OFFSET ... FETCH</c> no SQL) em vez de receber um resultado incompleto.
+/// </summary>
+public class SankhyaTruncatedResultException(string message, string? serviceName = null)
+    : SankhyaException(message, "1", serviceName);
