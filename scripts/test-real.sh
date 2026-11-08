@@ -22,7 +22,7 @@ if command -v dotnet >/dev/null 2>&1; then
   SANKHYA_CREDENTIALS_FILE="$CRED" dotnet test "$ROOT" -f net10.0 --filter "$FILTER" --logger "console;verbosity=normal"
 else
   podman run --rm \
-    -v "$ROOT":/src:Z -w /src \
+    -v "$ROOT":/src:z -w /src \
     -v "$CRED":/run/sankhya.env:ro,Z \
     -e SANKHYA_CREDENTIALS_FILE=/run/sankhya.env \
     -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \

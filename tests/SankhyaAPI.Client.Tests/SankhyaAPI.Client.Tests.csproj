@@ -12,7 +12,6 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
-		<PackageReference Include="WireMock.Net" Version="2.21.0" />
 		<PackageReference Include="xunit" Version="2.9.3" />
 		<PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
 	</ItemGroup>
@@ -24,8 +23,10 @@
 		<Using Include="SankhyaAPI.Client.Repositories" />
 		<Using Include="SankhyaAPI.Client.Mapping" />
 		<Using Include="SankhyaAPI.Client.Sql" />
+		<Using Include="SankhyaAPI.Client.Testing" />
 		<ProjectReference Include="..\..\SankhyaAPI.Client\SankhyaAPI.Client.csproj" />
 		<ProjectReference Include="..\..\SankhyaAPI.Client.Generators\SankhyaAPI.Client.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\SankhyaAPI.Client.Testing\SankhyaAPI.Client.Testing.csproj" />
 	</ItemGroup>
 
 </Project>

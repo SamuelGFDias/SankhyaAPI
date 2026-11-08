@@ -1,4 +1,3 @@
-using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Unit;
@@ -15,16 +14,16 @@ public class ChaveCompostaFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ISankhyaRepository<ItemNota> Itens() => _fake.Cliente().Repository<ItemNota>("ItemNota");
+    private ISankhyaRepository<ItemNota> Itens() => _fake.CreateClient().Repository<ItemNota>("ItemNota");
 
     [Fact]
     public async Task Insert_envia_a_parte_informada_e_omite_a_auto_numerada()
     {
-        _fake.ComEntidades(Save, ["500", "3", "2"]);
+        _fake.WithEntities(Save, ["500", "3", "2"]);
 
         ItemNota? criado = await Itens().CreateAsync(new ItemNota { NuNota = 500, Quantidade = 2m });
 
-        string body = _fake.Chamadas(Save).Single().RequestMessage!.Body!;
+        string body = _fake.Calls(Save).Single().RequestMessage!.Body!;
         Assert.Contains("<NUNOTA>500</NUNOTA>", body);
         Assert.DoesNotContain("<SEQUENCIA>", body);
         Assert.Equal(3, criado!.Sequencia.Value);
@@ -36,7 +35,7 @@ public class ChaveCompostaFakeTests : IDisposable
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => Itens().CreateAsync(new ItemNota { Quantidade = 1m }));
 
         Assert.Equal(nameof(ItemNota.NuNota), ex.ParamName);
-        Assert.Empty(_fake.Chamadas(Save));
+        Assert.Empty(_fake.Calls(Save));
     }
 
     [Fact]
@@ -44,17 +43,17 @@ public class ChaveCompostaFakeTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentException>(() => Itens().CreateAsync(new ItemNota { NuNota = 500, Sequencia = 1 }));
 
-        Assert.Empty(_fake.Chamadas(Save));
+        Assert.Empty(_fake.Calls(Save));
     }
 
     [Fact]
     public async Task Update_exige_e_envia_as_duas_partes_na_chave()
     {
-        _fake.ComEntidades(Save, ["500", "3", "5"]);
+        _fake.WithEntities(Save, ["500", "3", "5"]);
 
         await Itens().UpdateAsync(new ItemNota { NuNota = 500, Sequencia = 3, Quantidade = 5m });
 
-        string body = _fake.Chamadas(Save).Single().RequestMessage!.Body!;
+        string body = _fake.Calls(Save).Single().RequestMessage!.Body!;
         Assert.Matches(@"<key>\s*<NUNOTA>500</NUNOTA>\s*<SEQUENCIA>3</SEQUENCIA>\s*</key>", body);
         await Assert.ThrowsAsync<ArgumentNullException>(() => Itens().UpdateAsync(new ItemNota { NuNota = 500, Quantidade = 1m }));
     }
@@ -62,10 +61,10 @@ public class ChaveCompostaFakeTests : IDisposable
     [Fact]
     public async Task Delete_envia_as_duas_partes_no_id()
     {
-        _fake.ComXmlBruto(Remove, "<responseBody />");
+        _fake.WithRawXml(Remove, "<responseBody />");
 
         await Itens().DeleteAsync(new ItemNota { NuNota = 500, Sequencia = 3 });
 
-        Assert.Matches(@"<id>\s*<NUNOTA>500</NUNOTA>\s*<SEQUENCIA>3</SEQUENCIA>\s*</id>", _fake.Chamadas(Remove).Single().RequestMessage!.Body);
+        Assert.Matches(@"<id>\s*<NUNOTA>500</NUNOTA>\s*<SEQUENCIA>3</SEQUENCIA>\s*</id>", _fake.Calls(Remove).Single().RequestMessage!.Body);
     }
 }
