@@ -123,6 +123,13 @@ public class ClassificacaoDeErrosTests : IDisposable
     [InlineData(Query, null, "Permitido apenas a execução de consultas, a instrução possui 'UPDATE', 'DELETE' ou 'INSERT' e tais comandos não são permitidos.", SankhyaErrorKind.InvalidRequest, 400, null)]
     [InlineData(Query, null, "Erro de divisão por zero.", SankhyaErrorKind.QueryFailed, 400, null)]
     [InlineData("Outro.servico", null, "Algo inesperado", SankhyaErrorKind.Unknown, 502, null)]
+    [InlineData(Remove, null, "Contato não existe: PK[4,210]", SankhyaErrorKind.NotFound, 404, null)]
+    [InlineData(Save, "CORE_E00912", "Empresa não encontrada", SankhyaErrorKind.InvalidValue, 422, null)]
+    [InlineData(Save, "CORE_E00916", "TOP não encontrada.", SankhyaErrorKind.InvalidValue, 422, null)]
+    [InlineData(Save, null, "Data truncation", SankhyaErrorKind.InvalidValue, 422, null)]
+    [InlineData(Save, null, "Ano inferior ao limite permitido, veja o parâmetro de Limite Inferior para Ano.", SankhyaErrorKind.BusinessRule, 422, null)]
+    [InlineData(Save, null, "O preenchimento do endereço do contato é obrigatório.", SankhyaErrorKind.BusinessRule, 422, null)]
+    [InlineData(Query, null, "HttpServiceBroker: Nenhum provedor foi encontrado para o serviço 'CACSP.incluirNota'.", SankhyaErrorKind.InvalidRequest, 400, null)]
     public void Classifica_pelo_codigo_e_pela_mensagem(string servico, string? codigo, string mensagem, SankhyaErrorKind tipo, int http, string? campo)
     {
         (SankhyaErrorKind kind, string? field) = SankhyaErrorClassifier.Classify(servico, "0", mensagem, codigo);
@@ -154,6 +161,26 @@ public class ClassificacaoDeErrosTests : IDisposable
             () => _fake.CreateClient().Repository<Produto>().DeleteAsync(new Produto { CodProd = 1 }));
 
         Assert.Equal("Não é permitido excluir produto com movimento", ex.Message);
+    }
+
+    [Fact]
+    public void Prefixo_SQL_50001_do_RAISERROR_sai_da_mensagem()
+    {
+        Assert.Equal("Ano inferior ao limite permitido. Nota de Nro Único: 1.",
+            SankhyaErrorClassifier.Clean("SQL-50001 Ano inferior ao limite permitido. Nota de Nro Único: 1."));
+    }
+
+    [Fact]
+    public async Task Gravacao_recusada_sem_mensagem_e_Unknown_explicado_e_nao_regra_de_negocio()
+    {
+        _fake.WithStatus(Save, "0", "<statusMessage></statusMessage>");
+
+        var ex = await Assert.ThrowsAnyAsync<SankhyaException>(
+            () => _fake.CreateClient().Repository<Produto>().CreateAsync(new Produto { DescrProd = "X" }));
+
+        Assert.Equal(SankhyaErrorKind.Unknown, ex.Kind);
+        Assert.IsNotType<SankhyaBusinessRuleException>(ex);
+        Assert.Contains("sem mensagem", ex.Message);
     }
 
     [Fact]
