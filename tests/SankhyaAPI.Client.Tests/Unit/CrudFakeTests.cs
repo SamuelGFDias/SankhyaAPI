@@ -1,7 +1,6 @@
 using System.Globalization;
 using SankhyaAPI.Client.Exceptions;
 
-using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Unit;
@@ -21,21 +20,21 @@ public class CrudFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ISankhyaRepository<Usuario> Usuarios() => _fake.Cliente().Repository<Usuario>("Usuario");
-    private ISankhyaRepository<Produto> Produtos() => _fake.Cliente().Repository<Produto>("Produto");
+    private ISankhyaRepository<Usuario> Usuarios() => _fake.CreateClient().Repository<Usuario>("Usuario");
+    private ISankhyaRepository<Produto> Produtos() => _fake.CreateClient().Repository<Produto>("Produto");
 
     [Fact]
     public async Task FindAsync_faz_login_com_credenciais_e_usa_cookie_da_sessao()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
+        _fake.WithEntities(Load, ["0", "SUP"]);
 
         await Usuarios().FindAsync("this.CODUSU = 0");
 
-        string loginBody = _fake.Chamadas(Login).Single().RequestMessage!.Body!;
+        string loginBody = _fake.Calls(Login).Single().RequestMessage!.Body!;
         Assert.Contains("<NOMUSU>usuario</NOMUSU>", loginBody);
         Assert.Contains("<INTERNO>senha</INTERNO>", loginBody);
 
-        var load = _fake.Chamadas(Load).Single().RequestMessage!;
+        var load = _fake.Calls(Load).Single().RequestMessage!;
         Assert.Contains($"JSESSIONID={SankhyaFakeServer.SessionId}", load.Headers!["Cookie"].Single());
         Assert.Contains("this.CODUSU = 0", load.Body);
         Assert.Contains("rootEntity=\"Usuario\"", load.Body);
@@ -44,7 +43,7 @@ public class CrudFakeTests : IDisposable
     [Fact]
     public async Task FindAsync_mapeia_entidades_retornadas()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"], ["1", "JOÃO"]);
+        _fake.WithEntities(Load, ["0", "SUP"], ["1", "JOÃO"]);
 
         List<Usuario> usuarios = await Usuarios().FindAsync("1 = 1");
 
@@ -57,7 +56,7 @@ public class CrudFakeTests : IDisposable
     [Fact]
     public async Task FindAsync_sem_registros_retorna_lista_vazia()
     {
-        _fake.ComXmlBruto(Load, "<responseBody><entities total=\"0\" /></responseBody>");
+        _fake.WithRawXml(Load, "<responseBody><entities total=\"0\" /></responseBody>");
 
         Assert.Empty(await Usuarios().FindAsync("1 = 0"));
     }
@@ -65,39 +64,39 @@ public class CrudFakeTests : IDisposable
     [Fact]
     public async Task UpdateAsync_usa_saveRecord_envia_chave_e_so_campos_alterados()
     {
-        _fake.ComEntidades(Save, ["10", "NOVO", "3.5", "", "S"]);
+        _fake.WithEntities(Save, ["10", "NOVO", "3.5", "", "S"]);
         var produto = new Produto { CodProd = 10, DescrProd = "NOVO" };
 
         await Produtos().UpdateAsync(produto);
 
-        string body = _fake.Chamadas(Save).Single().RequestMessage!.Body!;
+        string body = _fake.Calls(Save).Single().RequestMessage!.Body!;
         Assert.Contains("serviceName=\"CRUDServiceProvider.saveRecord\"", body);
         Assert.Contains("<key>", body);
         Assert.Contains("<CODPROD>10</CODPROD>", body);
         Assert.Contains("<DESCRPROD>NOVO</DESCRPROD>", body);
         Assert.DoesNotContain("<PRECO", body);
-        Assert.Empty(_fake.Chamadas(Remove));
+        Assert.Empty(_fake.Calls(Remove));
     }
 
     [Fact]
     public async Task UpdateAsync_com_Clear_envia_elemento_vazio_para_apagar_o_campo()
     {
-        _fake.ComEntidades(Save, ["10", "", "", "", ""]);
+        _fake.WithEntities(Save, ["10", "", "", "", ""]);
         var produto = new Produto { CodProd = 10, DescrProd = NullableState<string>.Clear() };
 
         await Produtos().UpdateAsync(produto);
 
-        Assert.Contains("<DESCRPROD />", _fake.Chamadas(Save).Single().RequestMessage!.Body);
+        Assert.Contains("<DESCRPROD />", _fake.Calls(Save).Single().RequestMessage!.Body);
     }
 
     [Fact]
     public async Task CreateAsync_nao_envia_chave_auto_enumerada()
     {
-        _fake.ComEntidades(Save, ["99", "NOVO", "", "", ""]);
+        _fake.WithEntities(Save, ["99", "NOVO", "", "", ""]);
 
         Produto? criado = await Produtos().CreateAsync(new Produto { DescrProd = "NOVO" });
 
-        string body = _fake.Chamadas(Save).Single().RequestMessage!.Body!;
+        string body = _fake.Calls(Save).Single().RequestMessage!.Body!;
         Assert.DoesNotContain("<CODPROD>", body);
         Assert.Equal(99, criado!.CodProd.Value);
     }
@@ -107,7 +106,7 @@ public class CrudFakeTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentException>(() => Produtos().CreateAsync(new Produto { CodProd = 1, DescrProd = "X" }));
 
-        Assert.Empty(_fake.Chamadas(Save));
+        Assert.Empty(_fake.Calls(Save));
     }
 
     [Fact]
@@ -116,17 +115,17 @@ public class CrudFakeTests : IDisposable
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => Usuarios().CreateAsync(new Usuario { NomeUsu = "X" }));
 
         Assert.Equal(nameof(Usuario.CodUsu), ex.ParamName);
-        Assert.Empty(_fake.Chamadas(Save));
+        Assert.Empty(_fake.Calls(Save));
     }
 
     [Fact]
     public async Task CreateAsync_envia_a_chave_que_nao_e_auto_enumerada()
     {
-        _fake.ComEntidades(Save, ["7", "NOVO"]);
+        _fake.WithEntities(Save, ["7", "NOVO"]);
 
         Usuario? criado = await Usuarios().CreateAsync(new Usuario { CodUsu = 7, NomeUsu = "NOVO" });
 
-        Assert.Contains("<CODUSU>7</CODUSU>", _fake.Chamadas(Save).Single().RequestMessage!.Body);
+        Assert.Contains("<CODUSU>7</CODUSU>", _fake.Calls(Save).Single().RequestMessage!.Body);
         Assert.Equal(7, criado!.CodUsu.Value);
     }
 
@@ -139,11 +138,11 @@ public class CrudFakeTests : IDisposable
     [Fact]
     public async Task DeleteAsync_usa_removeRecord_com_a_chave()
     {
-        _fake.ComXmlBruto(Remove, "<responseBody />");
+        _fake.WithRawXml(Remove, "<responseBody />");
 
         await Produtos().DeleteAsync(new Produto { CodProd = 10 });
 
-        string body = _fake.Chamadas(Remove).Single().RequestMessage!.Body!;
+        string body = _fake.Calls(Remove).Single().RequestMessage!.Body!;
         Assert.Contains("<id>", body);
         Assert.Contains("<CODPROD>10</CODPROD>", body);
     }
@@ -155,7 +154,7 @@ public class CrudFakeTests : IDisposable
         CultureInfo.CurrentCulture = new CultureInfo("pt-BR");
         try
         {
-            _fake.ComEntidades(Save, ["10", "", "1234.56", "07/11/2026 10:30:00", "S"]);
+            _fake.WithEntities(Save, ["10", "", "1234.56", "07/11/2026 10:30:00", "S"]);
             var produto = new Produto
             {
                 CodProd = 10, Preco = 1234.56m, DtAlter = new DateTime(2026, 11, 7, 10, 30, 0), Ativo = true
@@ -163,7 +162,7 @@ public class CrudFakeTests : IDisposable
 
             Produto? salvo = await Produtos().UpdateAsync(produto);
 
-            string body = _fake.Chamadas(Save).Single().RequestMessage!.Body!;
+            string body = _fake.Calls(Save).Single().RequestMessage!.Body!;
             Assert.Contains("<PRECO>1234.56</PRECO>", body);
             Assert.Contains("<DTALTER>07/11/2026 10:30:00</DTALTER>", body);
             Assert.Contains("<ATIVO>S</ATIVO>", body);
@@ -179,7 +178,7 @@ public class CrudFakeTests : IDisposable
     [Fact]
     public async Task Erro_do_Sankhya_vira_excecao_com_a_mensagem_decodificada()
     {
-        _fake.ComErro(Load, "Usuário sem permissão");
+        _fake.WithError(Load, "Usuário sem permissão");
 
         var ex = await Assert.ThrowsAsync<SankhyaException>(() => Usuarios().FindAsync("1 = 1"));
 
@@ -191,7 +190,7 @@ public class CrudFakeTests : IDisposable
     [Fact]
     public async Task Falha_HTTP_lanca_excecao_em_vez_de_retornar_lista_vazia()
     {
-        _fake.ComStatusHttp(Load, 500);
+        _fake.WithHttpStatus(Load, 500);
 
         await Assert.ThrowsAsync<HttpRequestException>(() => Usuarios().FindAsync("1 = 1"));
     }
@@ -199,42 +198,42 @@ public class CrudFakeTests : IDisposable
     [Fact]
     public async Task Login_invalido_lanca_excecao_sem_executar_a_operacao()
     {
-        _fake.ComErro(Login, "Usuário/Senha inválido.");
+        _fake.WithError(Login, "Usuário/Senha inválido.");
 
         var ex = await Assert.ThrowsAsync<SankhyaException>(() => Usuarios().FindAsync("1 = 1"));
 
         Assert.Contains("inválido", ex.Message);
-        Assert.Empty(_fake.Chamadas(Load));
+        Assert.Empty(_fake.Calls(Load));
     }
 
     [Fact]
     public async Task Logout_e_tentado_mesmo_quando_a_operacao_falha()
     {
-        _fake.ComErro(Load, "falhou");
+        _fake.WithError(Load, "falhou");
 
         await Assert.ThrowsAnyAsync<Exception>(() => Usuarios().FindAsync("1 = 1"));
 
-        Assert.Single(_fake.Chamadas(Logout));
+        Assert.Single(_fake.Calls(Logout));
     }
 
     [Fact]
     public async Task Logout_usa_a_mesma_rota_dos_demais_servicos()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
+        _fake.WithEntities(Load, ["0", "SUP"]);
 
         await Usuarios().FindAsync("1 = 1");
 
-        Assert.Equal(SankhyaFakeServer.ServicePath, _fake.Chamadas(Logout).Single().RequestMessage!.Path);
+        Assert.Equal(SankhyaFakeServer.ServicePath, _fake.Calls(Logout).Single().RequestMessage!.Path);
     }
 
     [Fact]
     public async Task Logout_envia_o_cookie_JSESSIONID_da_sessao()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
+        _fake.WithEntities(Load, ["0", "SUP"]);
 
         await Usuarios().FindAsync("1 = 1");
 
-        string cookie = _fake.Chamadas(Logout).Single().RequestMessage!.Headers!["Cookie"].Single();
+        string cookie = _fake.Calls(Logout).Single().RequestMessage!.Headers!["Cookie"].Single();
         Assert.StartsWith($"JSESSIONID={SankhyaFakeServer.SessionId}", cookie);
     }
 }

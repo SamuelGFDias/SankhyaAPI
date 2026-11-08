@@ -1,6 +1,4 @@
 using System.Text.Json;
-using System.Xml.Linq;
-using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Unit;
@@ -23,20 +21,20 @@ public class MapaFluenteFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ISankhyaRepository<OrdemServico> Ordens() => _fake.Cliente().Repository<OrdemServico>();
+    private ISankhyaRepository<OrdemServico> Ordens() => _fake.CreateClient().Repository<OrdemServico>();
 
     private static string Corpo(IReadOnlyList<WireMock.Logging.ILogEntry> chamadas) => chamadas.Single().RequestMessage!.Body!;
 
     [Fact]
     public async Task Insert_projeta_o_campo_calculado_em_data_e_hora_e_preenche_a_chave_gerada()
     {
-        _fake.ComXmlBruto(Save,
+        _fake.WithRawXml(Save,
             "<responseBody><entities total=\"1\"><metadata><fields><field name=\"NUMOS\"/></fields></metadata><entity><f0>77</f0></entity></entities></responseBody>");
         var ordem = new OrdemServico { Descricao = "Troca", DataExecucao = new DateTime(2026, 11, 7, 14, 30, 0), Status = StatusOs.Aberta };
 
         await Ordens().CreateAsync(ordem);
 
-        string body = Corpo(_fake.Chamadas(Save));
+        string body = Corpo(_fake.Calls(Save));
         Assert.Contains("rootEntity=\"OrdemServico\"", body);
         Assert.Contains("<DT_FINAL>07/11/2026</DT_FINAL>", body);
         Assert.Contains("<HR_FINAL>1430</HR_FINAL>", body);
@@ -48,7 +46,7 @@ public class MapaFluenteFakeTests : IDisposable
     [Fact]
     public async Task Leitura_recompoe_o_campo_calculado_e_le_entidade_ligada_e_apresentacao()
     {
-        _fake.ComXmlBruto(Load,
+        _fake.WithRawXml(Load,
             """
             <responseBody><entities total="1"><metadata><fields>
               <field name="NUMOS"/><field name="DESCRICAO"/><field name="DT_FINAL"/><field name="HR_FINAL"/><field name="STATUS"/>
@@ -66,7 +64,7 @@ public class MapaFluenteFakeTests : IDisposable
         Assert.Equal("ACME", ordem.NomeParceiro);
         Assert.Equal("SUP", ordem.NomeUsuario);
 
-        string body = Corpo(_fake.Chamadas(Load));
+        string body = Corpo(_fake.Calls(Load));
         Assert.Contains("<entity path=\"Parceiro\"><field name=\"NOMEPARC\" /></entity>", body);
         Assert.Contains("includePresentationFields=\"S\"", body);
         Assert.DoesNotContain("name=\"Usuario_NOMEUSU\"", body);
@@ -75,12 +73,12 @@ public class MapaFluenteFakeTests : IDisposable
     [Fact]
     public async Task Update_com_campos_explicitos_manda_so_eles_e_a_chave()
     {
-        _fake.ComEntidades(Save, ["5"]);
+        _fake.WithEntities(Save, ["5"]);
         var ordem = new OrdemServico { Numero = 5, Descricao = "Nova", DataExecucao = DateTime.Now, Status = StatusOs.Fechada };
 
         await Ordens().UpdateAsync(ordem, u => u.Set(x => x.Descricao).Clear(x => x.DataExecucao));
 
-        string body = Corpo(_fake.Chamadas(Save));
+        string body = Corpo(_fake.Calls(Save));
         Assert.Contains("<DESCRICAO>Nova</DESCRICAO>", body);
         Assert.Contains("<DT_FINAL />", body);
         Assert.Contains("<HR_FINAL />", body);
@@ -94,13 +92,13 @@ public class MapaFluenteFakeTests : IDisposable
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Ordens().UpdateAsync(new OrdemServico { Numero = 5 }));
 
         Assert.Contains("Track", ex.Message);
-        Assert.Empty(_fake.Chamadas(Save));
+        Assert.Empty(_fake.Calls(Save));
     }
 
     [Fact]
     public async Task Update_rastreado_manda_so_o_que_mudou_e_null_vira_apagar()
     {
-        _fake.ComEntidades(Save, ["5"]);
+        _fake.WithEntities(Save, ["5"]);
         var repo = Ordens();
         var ordem = repo.Track(new OrdemServico { Numero = 5, Descricao = "Antes", DataExecucao = new DateTime(2026, 1, 1), Status = StatusOs.Aberta });
 
@@ -108,7 +106,7 @@ public class MapaFluenteFakeTests : IDisposable
         ordem.Status = StatusOs.Fechada;
         await repo.UpdateAsync(ordem);
 
-        string body = Corpo(_fake.Chamadas(Save));
+        string body = Corpo(_fake.Calls(Save));
         Assert.Contains("<DESCRICAO />", body);
         Assert.Contains("<STATUS>F</STATUS>", body);
         Assert.DoesNotContain("<DT_FINAL", body);
@@ -117,11 +115,11 @@ public class MapaFluenteFakeTests : IDisposable
     [Fact]
     public async Task UpdateAll_manda_todos_os_campos_mapeados()
     {
-        _fake.ComEntidades(Save, ["5"]);
+        _fake.WithEntities(Save, ["5"]);
 
         await Ordens().UpdateAllAsync(new OrdemServico { Numero = 5, Descricao = "X", Status = StatusOs.Aberta });
 
-        string body = Corpo(_fake.Chamadas(Save));
+        string body = Corpo(_fake.Calls(Save));
         Assert.Contains("<DESCRICAO>X</DESCRICAO>", body);
         Assert.Contains("<DT_FINAL />", body);
         Assert.Contains("<STATUS>A</STATUS>", body);
@@ -145,8 +143,8 @@ public class MapaFluenteFakeTests : IDisposable
     [Fact]
     public async Task Mapa_fluente_e_atributos_geram_o_mesmo_envelope()
     {
-        _fake.ComEntidades(Save, ["10"]);
-        var cliente = _fake.Cliente();
+        _fake.WithEntities(Save, ["10"]);
+        var cliente = _fake.CreateClient();
 
         await cliente.Repository<Produto>().UpdateAsync(new Produto { CodProd = 10, DescrProd = "X", Preco = 1.5m, Ativo = true });
         await cliente.Repository<ProdutoPoco>().UpdateAsync(new ProdutoPoco { CodProd = 10, DescrProd = "X", Preco = 1.5m, Ativo = true },
@@ -154,7 +152,7 @@ public class MapaFluenteFakeTests : IDisposable
         await cliente.Repository<Produto>().CreateAsync(new Produto { DescrProd = "Y", Preco = 2m });
         await cliente.Repository<ProdutoPoco>().CreateAsync(new ProdutoPoco { DescrProd = "Y", Preco = 2m });
 
-        string[] corpos = _fake.Chamadas(Save).Select(c => c.RequestMessage!.Body!).ToArray();
+        string[] corpos = _fake.Calls(Save).Select(c => c.RequestMessage!.Body!).ToArray();
         Assert.Equal(corpos[0], corpos[1]);
         Assert.Equal(corpos[2], corpos[3]);
     }
@@ -184,7 +182,7 @@ public class MapaFluenteFakeTests : IDisposable
             Descricao = "Ação", DataExecucao = new DateTime(2026, 11, 7, 23, 59, 0), Status = StatusOs.Fechada
         };
 
-        OrdemServico volta = MapaIdaEVolta.Verificar(exemplo);
+        OrdemServico volta = SankhyaMapAssert.RoundTrip(exemplo);
 
         Assert.Equal(exemplo.Descricao, volta.Descricao);
         Assert.Equal(exemplo.DataExecucao, volta.DataExecucao);
@@ -221,26 +219,4 @@ public class MapaFluenteFakeTests : IDisposable
 internal static class MapaTestExtensions
 {
     public static void Compilar(this ISankhyaEntityMap map) => map.Build();
-}
-
-/// <summary>
-/// Ida e volta de um mapa sem servidor: monta o insert, devolve as colunas gravadas como resposta e lê de volta.
-/// </summary>
-internal static class MapaIdaEVolta
-{
-    public static T Verificar<T>(T exemplo) where T : class, new()
-    {
-        var map = SankhyaMaps.For(typeof(T));
-        XElement dataSet = SankhyaAPI.Client.Repositories.EntityXml.Insert(map, map.EntityName ?? "X", [exemplo]).Single();
-        XElement localFields = dataSet.Element("dataRow")!.Element("localFields")!;
-        foreach (var key in map.Keys)
-            localFields.Add(new XElement(key.Writes[0].Column, key.Writes[0].Format(key.Value(exemplo))));
-
-        var response = new XElement("responseBody",
-            new XElement("entities",
-                new XElement("metadata", new XElement("fields", localFields.Elements().Select(e => new XElement("field", new XAttribute("name", e.Name.LocalName))))),
-                new XElement("entity", localFields.Elements().Select((e, i) => new XElement($"f{i}", e.Value)))));
-
-        return SankhyaAPI.Client.Repositories.EntityXml.ReadEntities<T>(map, response).Items.Single();
-    }
 }

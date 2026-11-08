@@ -1,4 +1,3 @@
-using SankhyaAPI.Client.Tests.Fake;
 using SankhyaAPI.Client.Tests.Support;
 
 namespace SankhyaAPI.Client.Tests.Unit;
@@ -16,14 +15,14 @@ public class ConsultasFakeTests : IDisposable
 
     public void Dispose() => _fake.Dispose();
 
-    private ISankhyaRepository<Usuario> Usuarios() => _fake.Cliente().Repository<Usuario>();
+    private ISankhyaRepository<Usuario> Usuarios() => _fake.CreateClient().Repository<Usuario>();
 
-    private string Corpo(string servico) => _fake.Chamadas(servico).Single().RequestMessage!.Body!;
+    private string Corpo(string servico) => _fake.Calls(servico).Single().RequestMessage!.Body!;
 
     [Fact]
     public async Task Query_combina_filtros_infere_tipos_e_ordena_pela_coluna_mapeada()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
+        _fake.WithEntities(Load, ["0", "SUP"]);
 
         await Usuarios().Query()
                         .Where("this.NOMEUSU LIKE ?", "S%")
@@ -46,7 +45,7 @@ public class ConsultasFakeTests : IDisposable
     [Fact]
     public async Task Query_envia_os_atributos_do_loadRecords()
     {
-        _fake.ComEntidades(Load, ["0", "SUP"]);
+        _fake.WithEntities(Load, ["0", "SUP"]);
 
         await Usuarios().Query().ModifiedSince(new DateTime(2026, 4, 16, 12, 59, 59)).IgnoreCalculatedFields().FileBasedPagination().ToListAsync();
 
@@ -59,24 +58,24 @@ public class ConsultasFakeTests : IDisposable
     [Fact]
     public async Task StreamAsync_percorre_as_paginas_ate_hasMoreResult_falso()
     {
-        _fake.ComPagina(0, true, ["1", "A"], ["2", "B"]);
-        _fake.ComPagina(1, true, ["3", "C"]);
-        _fake.ComPagina(2, false, ["4", "D"]);
+        _fake.WithPage(0, true, ["1", "A"], ["2", "B"]);
+        _fake.WithPage(1, true, ["3", "C"]);
+        _fake.WithPage(2, false, ["4", "D"]);
 
         var codigos = new List<int>();
         await foreach (Usuario u in Usuarios().Query().OrderBy(x => x.CodUsu).StreamAsync())
             codigos.Add(u.CodUsu.Value);
 
         Assert.Equal([1, 2, 3, 4], codigos);
-        Assert.Equal(3, _fake.Chamadas(Load).Count);
+        Assert.Equal(3, _fake.Calls(Load).Count);
     }
 
     [Fact]
     public async Task GetAsync_busca_pela_chave_composta()
     {
-        _fake.ComEntidades(Load, ["500", "3", "2"]);
+        _fake.WithEntities(Load, ["500", "3", "2"]);
 
-        ItemNota? item = await _fake.Cliente().Repository<ItemNota>().GetAsync([500L, 3]);
+        ItemNota? item = await _fake.CreateClient().Repository<ItemNota>().GetAsync([500L, 3]);
 
         Assert.Equal(3, item!.Sequencia.Value);
         string body = Corpo(Load);
@@ -101,10 +100,10 @@ public class ConsultasFakeTests : IDisposable
     [Fact]
     public async Task QueryAsync_envia_o_SQL_renderizado()
     {
-        _fake.ComQuery(Metadata, "[[0]]");
+        _fake.WithQuery(Metadata, "[[0]]");
         string nome = "O'Brien";
 
-        await _fake.Cliente().Sql.QueryRawAsync<UsuarioLinha>($"SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = {nome}");
+        await _fake.CreateClient().Sql.QueryRawAsync<UsuarioLinha>($"SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = {nome}");
 
         string sql = System.Text.Json.JsonDocument.Parse(Corpo(Query)).RootElement.GetProperty("requestBody").GetProperty("sql").GetString()!;
         Assert.Equal("SELECT CODUSU FROM TSIUSU WHERE NOMEUSU = 'O''Brien'", sql);
@@ -113,9 +112,9 @@ public class ConsultasFakeTests : IDisposable
     [Fact]
     public async Task QueryTopAsync_pede_uma_linha_a_mais_para_saber_se_ha_outras()
     {
-        _fake.ComQuery(Metadata, "[[1],[2],[3]]");
+        _fake.WithQuery(Metadata, "[[1],[2],[3]]");
 
-        SankhyaRows<UsuarioLinha> rows = await _fake.Cliente().Sql.QueryTopAsync<UsuarioLinha>("SELECT CODUSU FROM TSIUSU", 2);
+        SankhyaRows<UsuarioLinha> rows = await _fake.CreateClient().Sql.QueryTopAsync<UsuarioLinha>("SELECT CODUSU FROM TSIUSU", 2);
 
         Assert.Contains("\"maxRows\":\"3\"", Corpo(Query));
         Assert.Equal(2, rows.Items.Count);
@@ -125,15 +124,15 @@ public class ConsultasFakeTests : IDisposable
     [Fact]
     public async Task QueryPagedAsync_pagina_com_OFFSET_FETCH_ate_vir_menos_que_a_pagina()
     {
-        _fake.ComQuerySe("OFFSET 0 ROWS FETCH NEXT 2 ROWS ONLY", Metadata, "[[1],[2]]");
-        _fake.ComQuerySe("OFFSET 2 ROWS FETCH NEXT 2 ROWS ONLY", Metadata, "[[3]]");
+        _fake.WithQueryWhen("OFFSET 0 ROWS FETCH NEXT 2 ROWS ONLY", Metadata, "[[1],[2]]");
+        _fake.WithQueryWhen("OFFSET 2 ROWS FETCH NEXT 2 ROWS ONLY", Metadata, "[[3]]");
 
         var codigos = new List<int?>();
-        await foreach (UsuarioLinha l in _fake.Cliente().Sql.QueryPagedAsync<UsuarioLinha>("SELECT CODUSU FROM TSIUSU", "CODUSU", 2))
+        await foreach (UsuarioLinha l in _fake.CreateClient().Sql.QueryPagedAsync<UsuarioLinha>("SELECT CODUSU FROM TSIUSU", "CODUSU", 2))
             codigos.Add(l.CodUsu);
 
         Assert.Equal([1, 2, 3], codigos);
-        Assert.Contains("SELECT * FROM (SELECT CODUSU FROM TSIUSU) q ORDER BY CODUSU OFFSET 0 ROWS", _fake.Chamadas(Query)[0].RequestMessage!.Body);
+        Assert.Contains("SELECT * FROM (SELECT CODUSU FROM TSIUSU) q ORDER BY CODUSU OFFSET 0 ROWS", _fake.Calls(Query)[0].RequestMessage!.Body);
     }
 
     [Theory]
@@ -150,8 +149,8 @@ public class ConsultasFakeTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
-            await foreach (UsuarioLinha _ in _fake.Cliente().Sql.QueryPagedAsync<UsuarioLinha>("SELECT CODUSU FROM TSIUSU ORDER BY CODUSU", "CODUSU")) { }
+            await foreach (UsuarioLinha _ in _fake.CreateClient().Sql.QueryPagedAsync<UsuarioLinha>("SELECT CODUSU FROM TSIUSU ORDER BY CODUSU", "CODUSU")) { }
         });
-        Assert.Empty(_fake.Chamadas(Query));
+        Assert.Empty(_fake.Calls(Query));
     }
 }
