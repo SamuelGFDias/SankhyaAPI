@@ -51,7 +51,7 @@ Comportamento do servidor Sankhya: [`docs/sankhya-protocolo.md`](../../../docs/s
 ## Impedimentos já resolvidos (não repita)
 
 **Ambiente**
-- Não há `dotnet` local: tudo roda em `podman` com `mcr.microsoft.com/dotnet/sdk:10.0` ou `:8.0`.
+- Não há `dotnet` local: tudo roda em `podman` com `mcr.microsoft.com/dotnet/sdk:10.0` ou `:8.0`. No servidor ARM64 (`/home/ubuntu`) não há podman, só `docker`: rode com `--user "$(id -u):$(id -g)" -e HOME=/tmp -e DOTNET_CLI_HOME=/tmp -e NUGET_PACKAGES=/src/.nuget-cache` (pasta no `.gitignore`). O SDK 8 como não-root falha no mutex `NuGet-Migrations`: rode-o como root e faça `chown -R` da árvore no fim do mesmo contêiner.
 - Use volume com **`:z`** (minúsculo). Com `:Z`, cada contêiner reetiqueta a árvore no SELinux, e contêineres paralelos (de outras worktrees) dão "Access denied".
 - O SDK 8 não conhece `net10.0`. O gate net8 usa `-p:SankhyaSoNet8=true` (condição nos csproj multi-target). **Não** use `-p:TargetFrameworks=net8.0` global: ele vaza para o generator (netstandard2.0) e quebra o restore.
 - O BenchmarkDotNet falha escrevendo no bind mount: rode numa cópia dentro do contêiner e traga os artefatos.
@@ -73,10 +73,13 @@ Comportamento do servidor Sankhya: [`docs/sankhya-protocolo.md`](../../../docs/s
 - O `Utf8JsonWriter` escapa `'` como `'`: no teste, compare o SQL fazendo parse do corpo JSON, não por `Contains`.
 - `VerifyExistenceOnUpdate` vem ligado. Teste fake de update precisa de `WithEntities(loadRecords, [chave])` ou de `CreateClient(configure: o => o.VerifyExistenceOnUpdate = false)`.
 - Para provar que a repetição usa a sessão nova, use `WithLoginSequence("S1","S2")`: o login padrão do fake devolve sempre o mesmo id.
+- O WireMock só registra a requisição depois de responder: com `WithDelay`, espere o atraso acabar antes de contar `Calls`. A primeira chamada de um processo (JIT) passa de 400 ms: aqueça o cliente com timeout folgado e só depois aperte o `Timeout` (as opções são compartilhadas por referência). Não chame o repositório dentro de `Session.ExecuteAsync` com `MaxSessions = 1`: a chamada interna espera a vaga que a externa segura.
 - Teste real que encerra sessão "por fora" precisa pegar o id **do pool** (`SankhyaSession.PooledSessionIds`), não o da sessão explícita.
 
 **Sankhya (detalhe em `docs/sankhya-protocolo.md`)**
-- Sessão não aceita requisições simultâneas, por isso o pool.
+- O Sankhya recusa (status 4, `Concurrency`) a **mesma** requisição repetida na sessão enquanto a primeira roda; requisições diferentes rodam em paralelo. O pool mantém uma operação por sessão por segurança.
+- Timeout do cliente não cancela nada no servidor: a requisição roda até o fim, e uma exclusão que estourou o tempo é confirmada. Por isso timeout não se repete e a sessão é descartada (#53). Exclusão lenta vem de FK sem índice na tabela filha e de lock (`@@LOCK_TIMEOUT = -1`): ver `docs/sankhya-protocolo.md`, seção 10.
+- O executeQuery só confere o começo do texto: `SELECT 1; <DDL>` chega ao banco, com login `db_owner`. Não use isso nos testes sem pedido explícito do usuário.
 - saveRecord de update é upsert, por isso `VerifyExistenceOnUpdate`.
 - executeQuery: teto de 5000 linhas, sem parâmetros, só SELECT. DDL é recusado, então não dá para criar trigger de teste.
 - Item de nota (TGFITE) não grava pelo CRUD genérico (status 0 sem mensagem). **Limite conhecido**, decidido com o usuário: não investigar mais sem pedido. Já descartado: falta de coluna do banco (falha igual com as 47 colunas de um item real). Pista não testada: `CODTPA` tem `requerido = S` no dicionário (TDDPCO) e é anulável no banco. Detalhes em `docs/sankhya-protocolo.md`, "Limite conhecido".

@@ -33,7 +33,7 @@ Biblioteca .NET para integração com o ERP Sankhya: CRUD de entidades, consulta
 ## Instalação
 
 ```bash
-dotnet add package SankhyaAPI.Client --version 6.0.0
+dotnet add package SankhyaAPI.Client --version 6.0.1
 ```
 
 O pacote tem como alvo `net8.0` e `net10.0`.
@@ -114,7 +114,7 @@ ISankhyaRepository<Produto> produtos = sankhya.Repository<Produto>();
 | `SessionMode` | `Shared` | `Shared` ou `PerOperation` (ver [Sessão](#sessão)). |
 | `MaxSessions` | `4` | Máximo de sessões abertas no modo `Shared`. Também é o máximo de chamadas em paralelo. |
 | `Timeout` | 100 s | Tempo máximo de cada tentativa de chamada a um serviço. |
-| `MaxRetries` | `2` | Novas tentativas em falha transitória, só em operações idempotentes (ver [Resiliência](#resiliência)). |
+| `MaxRetries` | `2` | Novas tentativas em falha transitória (5xx, conexão), só em operações idempotentes. Tempo esgotado não se repete (ver [Resiliência](#resiliência)). |
 | `Dialect` | `SqlServer` | Banco por trás do Sankhya (`SqlServer` ou `Oracle`), usado para formatar valores no SQL cru. |
 | `VerifyExistenceOnUpdate` | `true` | Confere se as chaves existem antes de cada update. O saveRecord do Sankhya **cria** o registro quando a chave não existe; com a opção ligada, o update lança `SankhyaNotFoundException`. Custa uma consulta por lote. |
 | `AllowHttp` | `false` | Libera `http://`. Só para desenvolvimento: a senha e a sessão trafegam em texto puro. |
@@ -561,7 +561,9 @@ Para exportar com OpenTelemetry (pacote do consumidor), registre a fonte `"Sankh
 ## Resiliência
 
 - **Timeout.** Cada tentativa de chamada a um serviço, e o download do relatório, tem o `Timeout` da configuração (100 s por padrão).
-- **Novas tentativas.** Falha transitória (timeout, HTTP 5xx, erro de conexão ou resposta que não é XML legível) é repetida até `MaxRetries` vezes, com espera de 200 ms, 400 ms e assim por diante. Vale só para operações idempotentes: login, loadRecords e executeQuery.
+- **Novas tentativas.** Falha transitória (HTTP 5xx, erro de conexão ou resposta que não é XML legível) é repetida até `MaxRetries` vezes, com espera de 200 ms, 400 ms e assim por diante. Vale só para operações idempotentes: login, loadRecords e executeQuery.
+- **Tempo esgotado não se repete, e a sessão é descartada.** O `Timeout` é do cliente: ele para de esperar, mas o Sankhya continua executando a requisição até o fim (uma exclusão lenta termina e grava depois do timeout). O Sankhya recusa por concorrência a mesma requisição repetida na sessão enquanto a primeira roda, e é exatamente isso que uma nova tentativa faria. Por isso, timeout não é repetido (nem no login, onde cada repetição poderia deixar uma sessão órfã), e no modo `Shared` a sessão de uma operação que estourou o tempo, foi cancelada pelo `CancellationToken`, recebeu HTTP 504 de um proxy ou foi recusada por concorrência não volta ao pool: o cliente tenta o logout sem esperar, e a próxima operação abre outra sessão. Depois de um timeout numa escrita, confira no banco se ela foi gravada antes de repetir.
+- **Limites.** A sessão explícita (`Session.LoginAsync`) continua a mesma depois de um timeout: quem a abriu decide se a encerra. `MaxSessions` limita as chamadas que o cliente espera ao mesmo tempo, não o trabalho no servidor: uma requisição abandonada segue rodando lá enquanto a vaga já atende outra operação.
 - **Escritas não se repetem por falha de transporte.** Insert, update e delete não são repetidos automaticamente, porque o servidor pode ter gravado antes de a resposta se perder. A única repetição de escrita é a da sessão expirada (`status="3"`), que não grava nada.
 - **Logout.** Uma falha ao encerrar a sessão é registrada e ignorada. A sessão expira no servidor, e o resultado da operação não se perde.
 
@@ -623,14 +625,14 @@ O pacote traz uma **skill** que ensina um agente de IA (Claude Code, Codex, Curs
 Ela vem em `skills/sankhyaapi-client/` dentro do pacote. Depois do `dotnet restore`, copie para a pasta de skills do seu projeto:
 
 ```bash
-# Linux/macOS (troque 6.0.0 pela versão instalada)
+# Linux/macOS (troque 6.0.1 pela versão instalada)
 mkdir -p .claude/skills
-cp -r ~/.nuget/packages/sankhyaapi.client/6.0.0/skills/sankhyaapi-client .claude/skills/
+cp -r ~/.nuget/packages/sankhyaapi.client/6.0.1/skills/sankhyaapi-client .claude/skills/
 ```
 
 ```powershell
 # Windows
-Copy-Item -Recurse "$env:USERPROFILE\.nuget\packages\sankhyaapi.client\6.0.0\skills\sankhyaapi-client" ".claude\skills\"
+Copy-Item -Recurse "$env:USERPROFILE\.nuget\packages\sankhyaapi.client\6.0.1\skills\sankhyaapi-client" ".claude\skills\"
 ```
 
 Para usar em todos os projetos, copie para `~/.claude/skills/`. Peça ao agente coisas como "configura o SankhyaAPI.Client neste projeto", "mapeia a tabela TGFPAR", "migra do 5.2 para o 6.0" ou "trata os erros do Sankhya na API". Ao atualizar o pacote, copie a skill de novo: ela acompanha a versão.

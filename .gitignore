@@ -365,3 +365,4 @@ FodyWeavers.xsd
 
 # Worktrees de subagentes do Claude Code
 .claude/worktrees/
+.nuget-cache/

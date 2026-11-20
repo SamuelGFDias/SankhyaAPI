@@ -78,7 +78,7 @@ var produtos = sankhya.Repository<Produto>();
 | `SessionMode` | `Shared` | `PerOperation` para login e logout a cada operação (jobs raros, isolamento total) |
 | `MaxSessions` | 4 | máximo de chamadas paralelas (uma sessão por chamada) |
 | `Timeout` | 100 s | por tentativa de chamada |
-| `MaxRetries` | 2 | novas tentativas em falha transitória, só em leitura e login |
+| `MaxRetries` | 2 | novas tentativas em falha transitória (5xx, conexão), só em leitura e login. Timeout **não** se repete: a requisição segue no servidor (uma escrita pode ter sido gravada), e no modo `Shared` a sessão é descartada |
 | `VerifyExistenceOnUpdate` | `true` | desligue só se o upsert do saveRecord for desejado |
 | `Dialect` | `SqlServer` | `Oracle` quando o Sankhya roda em Oracle (afeta datas no SQL cru) |
 | `AllowHttp` | `false` | só em desenvolvimento |
