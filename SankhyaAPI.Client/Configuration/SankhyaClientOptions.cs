@@ -60,6 +60,19 @@ public sealed class SankhyaClientOptions
     public int MaxRetries { get; set; } = 2;
 
     /// <summary>
+    /// Avisa no log (<c>Warning</c>) os índices que faltam quando uma exclusão é lenta: passou de
+    /// <see cref="SlowDeleteThreshold"/> ou estourou o tempo. O pacote consulta só o catálogo do SQL Server, uma vez por
+    /// entidade, e registra cada FK sem índice na tabela filha com o <c>CREATE INDEX</c> sugerido. Sem efeito no Oracle.
+    /// Padrão: true.
+    /// </summary>
+    public bool MissingIndexWarnings { get; set; } = true;
+
+    /// <summary>
+    /// Duração a partir da qual uma exclusão conta como lenta para <see cref="MissingIndexWarnings"/>. Padrão: 10 segundos.
+    /// </summary>
+    public TimeSpan SlowDeleteThreshold { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
     /// Confere, antes de cada update, se as chaves existem. O saveRecord do Sankhya grava mesmo quando a chave não
     /// existe (cria o registro, como um upsert); com esta opção, o update de chave inexistente lança
     /// <see cref="Exceptions.SankhyaNotFoundException"/> em vez de criar. Custa uma consulta por lote. Padrão: true.
@@ -104,6 +117,7 @@ public sealed class SankhyaClientOptionsValidator : IValidateOptions<SankhyaClie
         if (options.Timeout <= TimeSpan.Zero) erros.Add("Timeout precisa ser positivo.");
         if (options.MaxRetries < 0) erros.Add("MaxRetries não pode ser negativo.");
         if (options.MaxSessions < 1) erros.Add("MaxSessions precisa ser pelo menos 1.");
+        if (options.SlowDeleteThreshold <= TimeSpan.Zero) erros.Add("SlowDeleteThreshold precisa ser positivo.");
 
         return erros.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(erros);
     }

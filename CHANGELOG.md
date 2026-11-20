@@ -1,5 +1,12 @@
 # Changelog
 
+## 6.1.0
+
+### Novidades
+
+- **Aviso de índice faltando em exclusão lenta.** A exclusão de uma linha-pai confere cada FK que a referencia; sem índice na coluna da tabela filha, cada conferência varre a filha inteira e espera pelos locks dela. Quando um delete passa de `SlowDeleteThreshold` (padrão 10 s) ou estoura o tempo, o pacote consulta o catálogo do SQL Server em segundo plano, uma vez por entidade, e loga um `Warning` (`MissingIndex`) por FK sem índice em filha com 10 mil linhas ou mais, com o `CREATE INDEX` sugerido. Liga por padrão; desligue com `MissingIndexWarnings = false`. Só SQL Server.
+- **`client.Diagnostics.FindMissingForeignKeyIndexesAsync(entidadeOuTabela)`** (`ISankhyaDiagnostics`, também registrado na injeção de dependência): lista as FKs sem índice que referenciam a tabela, da filha maior para a menor, com colunas (FK composta inclusive), linhas da filha e o comando sugerido (`SankhyaIndexSuggestion`). Resolve a entidade pela `TDDINS`.
+
 ## 6.0.1
 
 ### Correções

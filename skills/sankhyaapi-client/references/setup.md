@@ -80,6 +80,8 @@ var produtos = sankhya.Repository<Produto>();
 | `Timeout` | 100 s | por tentativa de chamada |
 | `MaxRetries` | 2 | novas tentativas em falha transitória (5xx, conexão), só em leitura e login. Timeout **não** se repete: a requisição segue no servidor (uma escrita pode ter sido gravada), e no modo `Shared` a sessão é descartada |
 | `VerifyExistenceOnUpdate` | `true` | desligue só se o upsert do saveRecord for desejado |
+| `MissingIndexWarnings` | `true` | exclusão lenta (ou com timeout) loga `Warning` com o `CREATE INDEX` das FKs sem índice nas tabelas filhas; só SQL Server |
+| `SlowDeleteThreshold` | 10 s | a partir de quanto a exclusão conta como lenta |
 | `Dialect` | `SqlServer` | `Oracle` quando o Sankhya roda em Oracle (afeta datas no SQL cru) |
 | `AllowHttp` | `false` | só em desenvolvimento |
 

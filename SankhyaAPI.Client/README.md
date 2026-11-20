@@ -25,6 +25,7 @@ Biblioteca .NET para integração com o ERP Sankhya: CRUD de entidades, consulta
 - [Erros](#erros)
 - [Observabilidade](#observabilidade)
 - [Resiliência](#resiliência)
+- [Exclusão lenta e índices](#exclusão-lenta-e-índices)
 - [Source generator e AOT](#source-generator-e-aot)
 - [Testes](#testes)
 - [Skill para agentes de IA](#skill-para-agentes-de-ia)
@@ -33,7 +34,7 @@ Biblioteca .NET para integração com o ERP Sankhya: CRUD de entidades, consulta
 ## Instalação
 
 ```bash
-dotnet add package SankhyaAPI.Client --version 6.0.1
+dotnet add package SankhyaAPI.Client --version 6.1.0
 ```
 
 O pacote tem como alvo `net8.0` e `net10.0`.
@@ -117,9 +118,11 @@ ISankhyaRepository<Produto> produtos = sankhya.Repository<Produto>();
 | `MaxRetries` | `2` | Novas tentativas em falha transitória (5xx, conexão), só em operações idempotentes. Tempo esgotado não se repete (ver [Resiliência](#resiliência)). |
 | `Dialect` | `SqlServer` | Banco por trás do Sankhya (`SqlServer` ou `Oracle`), usado para formatar valores no SQL cru. |
 | `VerifyExistenceOnUpdate` | `true` | Confere se as chaves existem antes de cada update. O saveRecord do Sankhya **cria** o registro quando a chave não existe; com a opção ligada, o update lança `SankhyaNotFoundException`. Custa uma consulta por lote. |
+| `MissingIndexWarnings` | `true` | Em exclusão lenta, loga como aviso os índices que faltam nas tabelas filhas (ver [Exclusão lenta e índices](#exclusão-lenta-e-índices)). Só SQL Server. |
+| `SlowDeleteThreshold` | 10 s | A partir de quanto uma exclusão conta como lenta para `MissingIndexWarnings`. Timeout sempre conta. |
 | `AllowHttp` | `false` | Libera `http://`. Só para desenvolvimento: a senha e a sessão trafegam em texto puro. |
 
-Opções inválidas lançam `OptionsValidationException` com a lista de problemas: `BaseUrl` absoluta e terminada em `/mge`, `https` (salvo `AllowHttp`), `Usuario` e `Senha` preenchidos, `Timeout` positivo, `MaxRetries` não negativo e `MaxSessions` de pelo menos 1.
+Opções inválidas lançam `OptionsValidationException` com a lista de problemas: `BaseUrl` absoluta e terminada em `/mge`, `https` (salvo `AllowHttp`), `Usuario` e `Senha` preenchidos, `Timeout` positivo, `MaxRetries` não negativo, `MaxSessions` de pelo menos 1 e `SlowDeleteThreshold` positivo.
 
 ## Sessão
 
@@ -554,7 +557,7 @@ O pacote usa os mesmos nomes para o tracing e as métricas, e a constante `Sankh
 - **Métricas.** `sankhya.client.calls` (respostas HTTP de sucesso), `sankhya.client.errors` (com a tag `sankhya.status`), `sankhya.client.logins`, `sankhya.client.session_renewals` e `sankhya.client.duration` (histograma em milissegundos).
 - **Logs.** Mensagens estruturadas com `ILogger`: serviço, status, duração, número da tentativa e renovação de sessão.
 
-Nenhum span, métrica ou log carrega valor de campo, de parâmetro ou de SQL.
+Nenhum span, métrica ou log carrega valor de campo, de parâmetro ou o SQL das suas consultas. A única exceção é o aviso de índice faltando, que traz metadados do esquema (nomes de tabela, coluna e FK) e o `CREATE INDEX` sugerido, sem dados de negócio.
 
 Para exportar com OpenTelemetry (pacote do consumidor), registre a fonte `"SankhyaAPI.Client"` no tracing e o medidor `"SankhyaAPI.Client"` nas métricas.
 
@@ -566,6 +569,21 @@ Para exportar com OpenTelemetry (pacote do consumidor), registre a fonte `"Sankh
 - **Limites.** A sessão explícita (`Session.LoginAsync`) continua a mesma depois de um timeout: quem a abriu decide se a encerra. `MaxSessions` limita as chamadas que o cliente espera ao mesmo tempo, não o trabalho no servidor: uma requisição abandonada segue rodando lá enquanto a vaga já atende outra operação.
 - **Escritas não se repetem por falha de transporte.** Insert, update e delete não são repetidos automaticamente, porque o servidor pode ter gravado antes de a resposta se perder. A única repetição de escrita é a da sessão expirada (`status="3"`), que não grava nada.
 - **Logout.** Uma falha ao encerrar a sessão é registrada e ignorada. A sessão expira no servidor, e o resultado da operação não se perde.
+
+## Exclusão lenta e índices
+
+Para excluir uma linha, o banco confere cada FK que referencia a tabela. Quando a coluna da tabela filha não tem índice, cada conferência varre a filha inteira e espera pelos locks dela (no Sankhya, `LOCK_TIMEOUT` é infinito). É a causa mais comum de exclusão que estoura o timeout e, mesmo assim, é confirmada no banco (ver [Resiliência](#resiliência)). Em parceiro e produto há centenas dessas FKs, algumas em tabelas com milhões de linhas.
+
+- **Aviso automático.** Quando uma exclusão passa de `SlowDeleteThreshold` (10 s) ou estoura o tempo, o pacote consulta o catálogo do SQL Server em segundo plano, uma vez por entidade, e registra um `Warning` para cada FK sem índice em filha com 10 mil linhas ou mais (no máximo 10 por entidade), com o `CREATE INDEX` sugerido. A operação não espera nem é afetada pelo diagnóstico; se ele falhar, é tentado de novo na próxima exclusão lenta. Com sessão explícita aberta (`Session.LoginAsync`), o aviso automático não roda, porque a consulta iria na mesma sessão da exclusão que ainda pode estar em andamento; use o método sob demanda. Desligue com `MissingIndexWarnings = false`.
+- **Sob demanda**, em teste, na inicialização ou numa ferramenta de suporte:
+
+```csharp
+IReadOnlyList<SankhyaIndexSuggestion> sugestoes = await client.Diagnostics.FindMissingForeignKeyIndexesAsync("Contato");
+foreach (var s in sugestoes)                          // da filha maior para a menor
+    Console.WriteLine($"{s.ChildTable} ({string.Join(", ", s.Columns)}, {s.ChildRows} linhas): {s.CreateIndexSql}");
+```
+
+O parâmetro aceita o nome da entidade (instância do dicionário, resolvida pela `TDDINS`) ou o da tabela. O diagnóstico só lê o catálogo e não cria nada. Revise a sugestão com o DBA antes de aplicar: o índice acelera a exclusão, mas pesa um pouco em cada insert da filha, e criá-lo numa tabela grande leva tempo e espaço. Prefira as tabelas `AD_` (do cliente): as do Sankhya podem ser recriadas numa atualização de versão. No Oracle, o método lança `NotSupportedException` e o aviso automático não roda.
 
 ## Source generator e AOT
 
@@ -625,14 +643,14 @@ O pacote traz uma **skill** que ensina um agente de IA (Claude Code, Codex, Curs
 Ela vem em `skills/sankhyaapi-client/` dentro do pacote. Depois do `dotnet restore`, copie para a pasta de skills do seu projeto:
 
 ```bash
-# Linux/macOS (troque 6.0.1 pela versão instalada)
+# Linux/macOS (troque 6.1.0 pela versão instalada)
 mkdir -p .claude/skills
-cp -r ~/.nuget/packages/sankhyaapi.client/6.0.1/skills/sankhyaapi-client .claude/skills/
+cp -r ~/.nuget/packages/sankhyaapi.client/6.1.0/skills/sankhyaapi-client .claude/skills/
 ```
 
 ```powershell
 # Windows
-Copy-Item -Recurse "$env:USERPROFILE\.nuget\packages\sankhyaapi.client\6.0.1\skills\sankhyaapi-client" ".claude\skills\"
+Copy-Item -Recurse "$env:USERPROFILE\.nuget\packages\sankhyaapi.client\6.1.0\skills\sankhyaapi-client" ".claude\skills\"
 ```
 
 Para usar em todos os projetos, copie para `~/.claude/skills/`. Peça ao agente coisas como "configura o SankhyaAPI.Client neste projeto", "mapeia a tabela TGFPAR", "migra do 5.2 para o 6.0" ou "trata os erros do Sankhya na API". Ao atualizar o pacote, copie a skill de novo: ela acompanha a versão.

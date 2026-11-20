@@ -15,7 +15,7 @@
 
 ## 5.x → 6.0 (quebra de API, sem camada de compatibilidade)
 
-O guia completo está em `~/.nuget/packages/sankhyaapi.client/6.0.1/docs/migracao-6.0.md`, funcionalidade por funcionalidade. Resumo do que muda no código do usuário:
+O guia completo está em `~/.nuget/packages/sankhyaapi.client/6.1.0/docs/migracao-6.0.md`, funcionalidade por funcionalidade. Resumo do que muda no código do usuário:
 
 | 5.x | 6.0 |
 |---|---|
