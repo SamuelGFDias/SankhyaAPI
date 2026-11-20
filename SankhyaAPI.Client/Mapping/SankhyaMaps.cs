@@ -79,8 +79,9 @@ internal static class AttributeMaps
                 Set = generated && accessors.TryGetValue(property.Name, out var b) ? b.Set : property.CanWrite ? property.SetValue : null,
                 DefaultValue = !isNullableState && propertyType.IsValueType ? Activator.CreateInstance(propertyType) : null,
                 NullableState = isNullableState ? MemberColumns.AccessorFor(Activator.CreateInstance(propertyType)!) : null,
-                IsKey = key != null,
-                AutoNumbered = key?.AutoEnumerable ?? false
+                // O mapa de linha (SQL) só lê: não tem chave nem colunas de escrita (#52).
+                IsKey = !rowMode && key != null,
+                AutoNumbered = !rowMode && (key?.AutoEnumerable ?? false)
             };
 
             if (presentation != null)

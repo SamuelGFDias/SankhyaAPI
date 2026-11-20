@@ -1,5 +1,20 @@
 # Changelog
 
+## 6.0.1
+
+### Correções
+
+- **SQL cru com modelo que tem `[Key]`** (#52). `QueryRawAsync<T>`, `QueryTopAsync<T>` e `QueryPagedAsync<T>` lançavam `InvalidOperationException` ("A chave ... precisa corresponder a exatamente uma coluna") para qualquer modelo com `[Key]`, depois de executar o SQL. O mapa de linha só lê e agora não marca chave, então as entidades do CRUD também servem de linha, como na 5.x.
+- ⚠ **Sessão em tempo esgotado ou cancelamento** (#53). O `Timeout` é do cliente, e o Sankhya continua executando a requisição até o fim (uma exclusão que estoura o tempo é confirmada no banco). Antes, a nova tentativa reenviava a mesma requisição na mesma sessão com a anterior em execução, o que o Sankhya recusa por concorrência, e a sessão voltava ao pool. Agora:
+  - no modo `Shared`, a sessão de uma operação que estourou o tempo, foi cancelada pelo `CancellationToken`, recebeu HTTP 504 de um proxy ou foi recusada por concorrência é descartada do pool (logout sem esperar), e a próxima operação abre outra; a exceção é reconhecida também quando a operação do consumidor a embrulha. Uma falha com resposta do próprio Sankhya (HTTP 5xx, erro de negócio) continua devolvendo a sessão;
+  - tempo esgotado (do cliente ou HTTP 504) deixa de ser falha transitória: não é repetido em nenhuma operação, nem no login, onde cada repetição podia deixar uma sessão órfã. O Sankhya recusa a mesma requisição repetida na sessão enquanto a primeira roda (constatado na homologação). HTTP 5xx e erro de conexão continuam com até `MaxRetries` novas tentativas. Quem dependia da repetição de leitura em timeout deve aumentar o `Timeout`.
+  - limites documentados: a sessão explícita continua a mesma depois de um timeout, e `MaxSessions` não limita o trabalho que segue no servidor depois de um timeout.
+  - novo log `SessionDiscarded` (aviso).
+
+### Dependências
+
+- `SankhyaAPI.Client.Testing`: referência direta a `Microsoft.AspNetCore.WebUtilities` 2.3.14, porque a 2.3.0 trazida pelo WireMock.Net tem DoS conhecido (GHSA-6527-9fp8-r4x6) e quebrava o restore com `NU1902`.
+
 ## 6.0.0
 
 Versão com quebra de API, sem camada de compatibilidade com a 5.x. O guia de migração fica em `docs/migracao-6.0.md`.

@@ -231,7 +231,7 @@ internal sealed class SankhyaTransport : ISankhyaTransport
                 SankhyaTelemetry.Calls.Add(1, tags);
                 Log.Called(_logger, serviceName, (int)response.StatusCode, (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds);
                 return result;
-            } catch (Exception ex) when (attempt < maxAttempts && IsTransient(ex, cancellationToken))
+            } catch (Exception ex) when (attempt < maxAttempts && IsTransient(ex))
             {
                 SankhyaTelemetry.Errors.Add(1, tags, new KeyValuePair<string, object?>("sankhya.status", "transport"));
                 Log.TransientRetry(_logger, serviceName, attempt, maxAttempts, ex);
@@ -256,11 +256,16 @@ internal sealed class SankhyaTransport : ISankhyaTransport
         }
     }
 
-    private static bool IsTransient(Exception ex, CancellationToken cancellationToken) =>
+    /// <remarks>
+    /// Tempo esgotado, do cliente ou de um proxy (HTTP 504), não é transitório: a requisição pode continuar rodando no
+    /// servidor, que recusa a mesma requisição repetida na sessão enquanto a primeira roda (no login, cada repetição
+    /// pode deixar uma sessão órfã) (#53).
+    /// </remarks>
+    private static bool IsTransient(Exception ex) =>
         ex switch
         {
+            HttpRequestException { StatusCode: HttpStatusCode.GatewayTimeout } => false,
             HttpRequestException { StatusCode: null or >= HttpStatusCode.InternalServerError } => true,
-            OperationCanceledException => !cancellationToken.IsCancellationRequested,
             _ => false
         };
 

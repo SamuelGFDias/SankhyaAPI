@@ -168,6 +168,162 @@ public class NucleoFakeTests : IDisposable
         Assert.Equal(System.Net.HttpStatusCode.GatewayTimeout, ex.SuggestedHttpStatus);
     }
 
+    // #53: sem resposta (timeout ou cancelamento), a requisição pode seguir rodando no servidor, e o Sankhya recusa
+    // outra requisição na mesma sessão. A sessão não volta ao pool e o timeout não é repetido na mesma sessão.
+    private static readonly TimeSpan Atraso = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan TimeoutCurto = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>
+    /// Cliente de uma sessão só, já aquecido: a primeira chamada de um processo (JIT, WireMock) pode passar do
+    /// timeout curto, então o login e um executeQuery rodam com folga antes de apertar o timeout.
+    /// </summary>
+    private async Task<SankhyaClient> ClienteDeUmaSessaoAsync(int maxRetries = 2)
+    {
+        SankhyaClientOptions? opcoes = null;
+        SankhyaClient cliente = _fake.WithQuery("""[{"name":"N","order":1,"userType":"I"}]""", "[[1]]")
+                                     .CreateClient(SessionMode.Shared, maxRetries, o =>
+                                     {
+                                         o.Timeout = TimeSpan.FromSeconds(30);
+                                         o.MaxSessions = 1;
+                                         opcoes = o;
+                                     });
+        await cliente.Sql.QueryRawAsync<UsuarioLinha>("SELECT 1 N");
+        opcoes!.Timeout = TimeoutCurto;
+        return cliente;
+    }
+
+    // O WireMock só registra a requisição depois de responder: espera as respostas atrasadas antes de contar.
+    private static Task AguardarRespostasAtrasadas() => Task.Delay(Atraso + TimeSpan.FromSeconds(1));
+
+    private string[] CookiesDe(string servico) =>
+        _fake.Calls(servico).Select(c => c.RequestMessage!.Headers!["Cookie"].Single()).ToArray();
+
+    [Fact]
+    public async Task Sessao_com_timeout_nao_volta_ao_pool()
+    {
+        _fake.WithLoginSequence("S1", "S2").WithDelay(Load, Atraso);
+        await using SankhyaClient cliente = await ClienteDeUmaSessaoAsync();
+        var usuarios = cliente.Repository<Usuario>("Usuario");
+
+        var ex = await Assert.ThrowsAsync<SankhyaTransportException>(() => usuarios.FindAsync("this.CODUSU = 1"));
+        Assert.Equal(SankhyaErrorKind.Timeout, ex.Kind);
+        await Assert.ThrowsAsync<SankhyaTransportException>(() => usuarios.FindAsync("this.CODUSU = 2"));
+        await AguardarRespostasAtrasadas();
+
+        Assert.Equal(["JSESSIONID=S1", "JSESSIONID=S2"], CookiesDe(Load));
+        Assert.Equal(2, _fake.Calls(Login).Count);
+        Assert.Empty(((SankhyaAPI.Client.Session.SankhyaSession)cliente.Session).PooledSessionIds);
+    }
+
+    [Fact]
+    public async Task Timeout_nao_e_repetido_na_operacao()
+    {
+        _fake.WithDelay(Load, Atraso);
+        await using SankhyaClient cliente = await ClienteDeUmaSessaoAsync(maxRetries: 2);
+
+        await Assert.ThrowsAsync<SankhyaTransportException>(() => cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1"));
+        await AguardarRespostasAtrasadas();
+
+        Assert.Single(_fake.Calls(Load));
+    }
+
+    [Fact]
+    public async Task Timeout_nao_e_repetido_no_login()
+    {
+        // Aquece o processo e o servidor antes do login lento.
+        await using (SankhyaClient aquecimento = await ClienteDeUmaSessaoAsync()) { }
+        using var lento = new SankhyaFakeServer();
+        using (var http = new HttpClient()) await http.GetAsync(lento.BaseUrl);
+        lento.WithDelay(Login, Atraso);
+        await using SankhyaClient cliente = lento.CreateClient(SessionMode.Shared, 2, o => o.Timeout = TimeoutCurto);
+
+        var ex = await Assert.ThrowsAsync<SankhyaTransportException>(() => cliente.Repository<Usuario>("Usuario").FindAsync("1 = 1"));
+        Assert.Equal(SankhyaErrorKind.Timeout, ex.Kind);
+        await AguardarRespostasAtrasadas();
+
+        Assert.Single(lento.Calls(Login));
+    }
+
+    [Fact]
+    public async Task Cancelamento_pelo_chamador_descarta_a_sessao()
+    {
+        _fake.WithLoginSequence("S1", "S2").WithDelay(Load, Atraso);
+        await using SankhyaClient cliente = await ClienteDeUmaSessaoAsync();
+        var usuarios = cliente.Repository<Usuario>("Usuario");
+
+        using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200)))
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => usuarios.FindAsync("1 = 1", cts.Token));
+        using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200)))
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => usuarios.FindAsync("1 = 1", cts.Token));
+        await AguardarRespostasAtrasadas();
+
+        Assert.Equal(["JSESSIONID=S1", "JSESSIONID=S2"], CookiesDe(Load));
+    }
+
+    [Fact]
+    public async Task Gateway_timeout_de_proxy_nao_se_repete_e_descarta_a_sessao()
+    {
+        _fake.WithLoginSequence("S1", "S2").WithHttpStatus(Load, 504);
+        await using SankhyaClient cliente = await ClienteDeUmaSessaoAsync(maxRetries: 2);
+        var usuarios = cliente.Repository<Usuario>("Usuario");
+
+        await Assert.ThrowsAsync<SankhyaTransportException>(() => usuarios.FindAsync("1 = 1"));
+        await Assert.ThrowsAsync<SankhyaTransportException>(() => usuarios.FindAsync("1 = 1"));
+
+        Assert.Equal(["JSESSIONID=S1", "JSESSIONID=S2"], CookiesDe(Load));
+    }
+
+    [Fact]
+    public async Task Recusa_por_concorrencia_descarta_a_sessao()
+    {
+        _fake.WithLoginSequence("S1", "S2")
+             .WithError(Load, "O serviço foi cancelado por situação de concorrência. Essa mesma sessão HTTP fez a requisição duas vezes simultaneamente.");
+        await using SankhyaClient cliente = await ClienteDeUmaSessaoAsync();
+        var usuarios = cliente.Repository<Usuario>("Usuario");
+
+        var ex = await Assert.ThrowsAsync<SankhyaException>(() => usuarios.FindAsync("1 = 1"));
+        Assert.Equal(SankhyaErrorKind.Concurrency, ex.Kind);
+        await Assert.ThrowsAsync<SankhyaException>(() => usuarios.FindAsync("1 = 1"));
+
+        Assert.Equal(["JSESSIONID=S1", "JSESSIONID=S2"], CookiesDe(Load));
+    }
+
+    [Fact]
+    public async Task Timeout_embrulhado_pela_operacao_do_consumidor_tambem_descarta_a_sessao()
+    {
+        _fake.WithLoginSequence("S1", "S2").WithDelay(Load, Atraso);
+        await using SankhyaClient cliente = await ClienteDeUmaSessaoAsync();
+        var ids = new List<string>();
+
+        // A operação usa o transporte com a sessão recebida (chamar o repositório aqui dentro esperaria a única vaga do pool).
+        for (int i = 0; i < 2; i++)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => cliente.Session.ExecuteAsync<int>(async (sessao, ct) =>
+            {
+                ids.Add(sessao);
+                try { await cliente.Transport.SendXmlAsync(Load, [], sessao, idempotent: true, ct); }
+                catch (SankhyaTransportException e) { throw new InvalidOperationException("embrulho do consumidor", e); }
+                return 0;
+            }));
+        }
+
+        Assert.Equal(["S1", "S2"], ids);
+    }
+
+    [Fact]
+    public async Task Falha_HTTP_com_resposta_completa_devolve_a_sessao_ao_pool()
+    {
+        _fake.WithLoginSequence("S1", "S2").WithHttpStatus(Load, 503);
+        await using SankhyaClient cliente = await ClienteDeUmaSessaoAsync(maxRetries: 0);
+        var usuarios = cliente.Repository<Usuario>("Usuario");
+
+        await Assert.ThrowsAsync<SankhyaTransportException>(() => usuarios.FindAsync("1 = 1"));
+        await Assert.ThrowsAsync<SankhyaTransportException>(() => usuarios.FindAsync("1 = 1"));
+
+        Assert.Equal(["JSESSIONID=S1", "JSESSIONID=S1"], CookiesDe(Load));
+        Assert.Single(_fake.Calls(Login));
+    }
+
     [Theory]
     [InlineData("http://erp.exemplo.com/mge", false, "https")]
     [InlineData("https://erp.exemplo.com", false, "/mge")]

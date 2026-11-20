@@ -35,7 +35,8 @@ Ambiente sondado: Sankhya com SQL Server 2022. A URL e as credenciais ficam em `
 | No XML, `statusMessage` vem em base64 sobre ISO-8859-1, às vezes dentro de `<![CDATA[...]]>` e com quebra de linha no fim. No JSON, vem em texto puro | H/T |
 | `<tsError tsErrorCode="..." tsErrorLevel="...">` traz um `<statusMessage>` também em base64 | T (fake) |
 | Uma requisição concorrente com sessões diferentes na mesma instância não se mistura (12 chamadas simultâneas) | T |
-| **Duas requisições simultâneas na mesma sessão são recusadas**: "O serviço foi cancelado por situação de concorrência. Essa mesma sessão HTTP fez a requisição duas vezes simultaneamente." Uma sessão só atende uma requisição por vez; para paralelismo, use várias sessões (o pacote mantém um pool, `MaxSessions`) | H/T |
+| **A mesma requisição repetida na mesma sessão, enquanto a primeira roda, é recusada** com `status="4"`: "O serviço foi cancelado por situação de concorrência. Essa mesma sessão HTTP fez a requisição duas vezes simultaneamente." Em 2026-11-20 se constatou que a recusa vale para requisição **idêntica** (mesmo serviço e mesmo corpo). Duas consultas diferentes na mesma sessão rodaram em paralelo, sem recusa, e uma consulta leve passou com uma pesada em andamento. O pacote mantém o pool com uma operação por vez em cada sessão (`MaxSessions`) por segurança, e a repetição automática é justamente o caso recusado | H |
+| **O servidor não interrompe a requisição quando o cliente desiste.** Uma consulta de ~16 s abandonada pelo cliente aos 3 s seguiu rodando até o fim: a mesma consulta reenviada na sessão foi recusada por concorrência até ~16 s e aceita depois. Um `removeRecord` de contato que estourou os 100 s do cliente excluiu o registro (teste real, 2026-11-20). Timeout do cliente **não** é cancelamento: uma escrita que estourou o tempo pode ter sido gravada | H/T |
 
 ## 3. Encoding
 
@@ -117,7 +118,7 @@ Regra geral: **o Sankhya responde HTTP 200 em quase tudo**, inclusive login inv�
 | Senha errada | login | 0 | CORE_E01434 | Usuário/Senha inválido. | AuthenticationFailed / 401 |
 | Usuário inexistente | login | 0 | CORE_E01428 | Usuário/Senha inválido. | AuthenticationFailed / 401 |
 | Sessão expirada | qualquer | 3 | — | Não autorizado. | SessionExpired / 401 (renovada e repetida uma vez) |
-| Requisições simultâneas na mesma sessão | qualquer | 0 | — | O serviço foi cancelado por situação de concorrência... | Concurrency / 409 |
+| A mesma requisição repetida na mesma sessão enquanto a primeira roda | qualquer | 4 (0 em registro anterior) | — | O serviço foi cancelado por situação de concorrência... | Concurrency / 409 (a sessão é descartada do pool) |
 | Entidade inexistente | loadRecords | 0 | — | Não foi encontrado objeto de acesso a dados para este BMP: mge-dwf:X | InvalidRequest / 400 |
 | Campo inexistente | loadRecords | 0 | CORE_E04064 | Descritor do campo 'X' inválido. | InvalidRequest / 400 (Field) |
 | Expressão inválida | loadRecords | 0 | — | Sintaxe incorreta próxima a '='. | InvalidRequest / 400 |
@@ -131,7 +132,7 @@ Regra geral: **o Sankhya responde HTTP 200 em quase tudo**, inclusive login inv�
 | Campo inexistente | saveRecord | 0 | — | Campo não existe: AD_TESTE->X | InvalidRequest / 400 (Field) |
 | SQL com erro de sintaxe | executeQuery | 0 | — | O comando SELECT está em formato inválido. | InvalidRequest / 400 |
 | Tabela ou coluna inexistente | executeQuery | 0 | — | Nome de objeto 'X' inválido. / Nome de coluna 'X' inválido. | InvalidRequest / 400 |
-| UPDATE/DELETE/INSERT/DDL | executeQuery | 0 | — | Permitido apenas a execução de consultas, a instrução possui 'UPDATE', 'DELETE' ou 'INSERT'... | InvalidRequest / 400 |
+| UPDATE/DELETE/INSERT/DDL | executeQuery | 0 | — | Permitido apenas a execução de consultas, a instrução possui 'UPDATE', 'DELETE' ou 'INSERT'... DDL que não começa por SELECT: "O comando SELECT está em formato inválido." | InvalidRequest / 400 |
 | Divisão por zero | executeQuery | 0 | — | Erro de divisão por zero. | QueryFailed / 400 |
 | RAISERROR na consulta | executeQuery | 0 | — | o texto do RAISERROR, cru | QueryFailed / 400 |
 
@@ -167,7 +168,7 @@ Regra geral: **o Sankhya responde HTTP 200 em quase tudo**, inclusive login inv�
 
 Uma exclusão chegou a levar mais de 100 s uma vez (e concluiu no servidor depois do timeout do cliente). Isso não se repetiu em outras execuções nem com duas sessões: foi lentidão intermitente da homologação. O timeout padrão de 100 s ficou.
 
-**Trigger com regra de negócio:** não foi possível criar uma trigger na homologação (o executeQuery recusa DDL), então o caminho do saveRecord com RAISERROR não foi sondado. O que se viu: o banco devolve a mensagem crua (chave duplicada, RAISERROR na consulta), sem código. O pacote trata assim:
+**Trigger com regra de negócio:** não foi possível criar uma trigger na primeira homologação (o executeQuery recusa DDL que começa sem SELECT; ver a seção 10 sobre o lote `SELECT ...; DDL`), então o caminho do saveRecord com RAISERROR não foi sondado. O que se viu: o banco devolve a mensagem crua (chave duplicada, RAISERROR na consulta), sem código. O pacote trata assim:
 - toda recusa de saveRecord ou removeRecord que não bate com um erro técnico conhecido vira `BusinessRule` (422), com a mensagem da regra limpa;
 - no SQL Server, sai a frase "A transação foi encerrada no gatilho...";
 - no Oracle, `ORA-20xxx` (RAISE_APPLICATION_ERROR) também vira `BusinessRule`, e saem o código e a pilha `ORA-06512`.
@@ -234,3 +235,31 @@ Um campo obrigatório no dicionário e anulável no banco (como `CODTPA` na TGFI
 ```
 
 O script lê a URL e as credenciais do arquivo de credenciais, nunca as imprime e faz logout no fim. Escrita só na `AD_TESTE`.
+
+## 10. Exclusão lenta e timeout (2026-11-20, segunda homologação, SQL Server 2022 CU26)
+
+Investigação do sintoma "a exclusão estoura o timeout, mas o registro é excluído". Fonte H, com as sondas e medições abaixo.
+
+| Constatação | Fonte |
+|---|---|
+| O Sankhya executa a requisição até o fim mesmo depois que o cliente desiste (seção 2). A transação do `removeRecord` é confirmada no servidor, e só a resposta se perde | H/T |
+| `@@LOCK_TIMEOUT = -1` nas conexões do Sankhya: uma escrita que encontra lock de outra transação **espera indefinidamente**. O banco usa RCSI (`is_read_committed_snapshot_on = 1`), mas a conferência de FK de um DELETE usa lock compartilhado mesmo com RCSI | H |
+| Excluir uma linha-pai obriga o SQL Server a conferir cada FK que a referencia. Sem índice na coluna da tabela filha, cada conferência varre a filha inteira | H |
+| TGFCTT (contato): 16 FKs a referenciam. `AD_TADOSE (CODPARC, CODCONTATO)` tem 711 mil linhas e não tem índice que comece pelas colunas da FK; a conferência equivalente (`SELECT COUNT(*) ... WHERE CODPARC = 4 AND CODCONTATO = 999999`) levou 10 s. As consultas das duas triggers de DELETE (TGFCAB, TCSOSE, TGFCAB_EXC) levaram 0,2 a 0,3 s cada | H |
+| O teste real do contato levou 6 s com o servidor livre e passou de 100 s com o banco disputado por outra varredura grande: o tempo da exclusão depende da carga e de locks, porque as conferências são varreduras | H/T |
+| TGFPAR (parceiro): 392 FKs, 336 sem índice na filha, entre elas `AD_INTCONTADORES.CODPARC` (146 milhões de linhas; a varredura equivalente passou de 300 s) e várias colunas da TGFCAB (1,16 milhão). TGFPRO (produto): 378 FKs, 280 sem índice, entre elas `AD_INTCONTADORES.CODPROD` e `TGFSEU.CODSERV` (9,5 milhões; 28 s) | H |
+| **O executeQuery só confere o começo do texto.** Um lote `SELECT 1; CREATE INDEX ...` chega ao SQL Server, e o login do banco do Sankhya é `db_owner`. É um caminho para DDL que o Sankhya não previu; trate SQL montado por concatenação como risco alto (o `SankhyaSql` escapa a interpolação) | H |
+
+Consulta que lista as FKs sem índice na filha para uma tabela-pai (só catálogo, leve):
+
+```sql
+SELECT OBJECT_NAME(fk.parent_object_id) FILHA, c.name COLUNA,
+       (SELECT SUM(p.rows) FROM sys.partitions p WHERE p.object_id = fk.parent_object_id AND p.index_id IN (0,1)) LINHAS
+FROM sys.foreign_keys fk
+JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id AND fkc.constraint_column_id = 1
+JOIN sys.columns c ON c.object_id = fkc.parent_object_id AND c.column_id = fkc.parent_column_id
+WHERE fk.referenced_object_id = OBJECT_ID('TGFCTT')
+  AND NOT EXISTS (SELECT 1 FROM sys.index_columns ic WHERE ic.object_id = fkc.parent_object_id
+                  AND ic.column_id = fkc.parent_column_id AND ic.key_ordinal = 1)
+ORDER BY LINHAS DESC
+```

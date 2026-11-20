@@ -76,7 +76,7 @@ await foreach (var l in sql.QueryPagedAsync<ParceiroLinha>("SELECT CODPARC FROM 
 Regras:
 - Teto fixo de **5000 linhas**: acima disso, `QueryRawAsync`/`QueryAsDictionaryAsync` lançam `SankhyaTruncatedResultException`.
 - `QueryPagedAsync` pede a ordenação à parte, e o SQL não pode ter `ORDER BY`.
-- Só `SELECT`: o servidor recusa UPDATE, DELETE, INSERT e DDL.
+- Só `SELECT`: o servidor recusa UPDATE, DELETE e INSERT. A checagem dele só olha o começo do texto (um lote `SELECT ...; outro comando` chega ao banco), então nunca monte SQL por concatenação: use a interpolação do `SankhyaSql`, que escapa os valores.
 - Não guarde a interpolação numa `string` antes de passar: ela vira texto sem escape (SNK005). `SankhyaSql.Raw("...")` serve para SQL fixo.
 - O tipo da linha mapeia por `[XmlElement]`, pelo mapa registrado ou pelo nome da propriedade. No dicionário, inteiros voltam como `long`.
 
