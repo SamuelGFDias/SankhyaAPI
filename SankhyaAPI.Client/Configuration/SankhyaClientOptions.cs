@@ -47,13 +47,15 @@ public sealed class SankhyaClientOptions
     public int MaxSessions { get; set; } = 4;
 
     /// <summary>
-    /// Tempo máximo de cada chamada HTTP. Padrão: 100 segundos.
+    /// Tempo máximo de cada chamada HTTP. Padrão: 100 segundos. É do cliente: o Sankhya não interrompe a requisição
+    /// quando o cliente desiste, e uma escrita que estourou o tempo pode ter sido gravada.
     /// </summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
 
     /// <summary>
-    /// Novas tentativas em falha transitória de transporte (5xx, timeout, conexão), só em operações idempotentes
-    /// (login, loadRecords, executeQuery). Escritas nunca são repetidas por falha de transporte. Padrão: 2.
+    /// Novas tentativas em falha transitória de transporte (5xx, conexão), só em operações idempotentes
+    /// (login, loadRecords, executeQuery). Escritas nunca são repetidas por falha de transporte. Tempo esgotado não é
+    /// repetido: a requisição pode continuar no servidor, e a sessão dela é descartada. Padrão: 2.
     /// </summary>
     public int MaxRetries { get; set; } = 2;
 

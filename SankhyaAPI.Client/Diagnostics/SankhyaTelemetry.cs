@@ -41,4 +41,7 @@ internal static partial class Log
 
     [LoggerMessage(5, LogLevel.Warning, "Falha ao encerrar a sessão no Sankhya (ela expira no servidor)")]
     public static partial void LogoutFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(6, LogLevel.Warning, "Sessão Sankhya descartada: a operação terminou sem resposta (tempo esgotado ou cancelamento) e a requisição pode seguir no servidor")]
+    public static partial void SessionDiscarded(ILogger logger);
 }

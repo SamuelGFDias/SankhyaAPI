@@ -147,6 +147,7 @@ internal sealed class SankhyaSession : ISankhyaSession, IDisposable
     {
         await _slots.WaitAsync(cancellationToken);
         SankhyaSessionInfo? session = null;
+        bool busy = false;
         try
         {
             session = _idle.TryTake(out SankhyaSessionInfo? idle) ? idle : await OpenPooledAsync(cancellationToken);
@@ -161,17 +162,54 @@ internal sealed class SankhyaSession : ISankhyaSession, IDisposable
                 session = await OpenPooledAsync(cancellationToken);
                 return await operation(session.SessionId, cancellationToken);
             }
+        } catch (Exception ex) when (session != null && LeftRunning(ex))
+        {
+            busy = true;
+            throw;
         } finally
         {
             if (session != null)
             {
+                if (busy) Discard(session);
                 // Depois do dispose, a sessão que volta de uma operação em andamento é encerrada, não reaproveitada.
-                if (_disposed) await TryLogoutAsync(session.SessionId);
+                else if (_disposed) await TryLogoutAsync(session.SessionId);
                 else _idle.Add(session);
             }
 
             _slots.Release();
         }
+    }
+
+    /// <summary>
+    /// A requisição pode continuar rodando no servidor: o cliente desistiu (tempo esgotado ou cancelamento), um proxy
+    /// desistiu por ele (HTTP 504) ou o Sankhya recusou por concorrência (a mesma requisição ainda roda nessa sessão).
+    /// O Sankhya não interrompe o trabalho quando o cliente desiste, e recusa a mesma requisição repetida na sessão
+    /// enquanto a primeira roda. Uma falha com resposta do próprio Sankhya (HTTP 5xx, erro de negócio) não entra aqui:
+    /// o servidor já terminou. A cadeia de <see cref="Exception.InnerException"/> é percorrida porque a operação pode
+    /// ser do consumidor (<see cref="ISankhyaSession.ExecuteAsync{T}"/>) e embrulhar a exceção.
+    /// </summary>
+    private static bool LeftRunning(Exception? ex)
+    {
+        for (; ex != null; ex = ex.InnerException)
+        {
+            if (ex is OperationCanceledException
+                    or SankhyaTransportException { Kind: SankhyaErrorKind.Timeout }
+                    or SankhyaTransportException { HttpStatus: System.Net.HttpStatusCode.GatewayTimeout }
+                    or SankhyaException { Kind: SankhyaErrorKind.Concurrency })
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Tira a sessão do pool e tenta encerrá-la sem esperar. Se o logout falhar, a sessão expira no servidor (#53).
+    /// </summary>
+    private void Discard(SankhyaSessionInfo session)
+    {
+        _open.TryRemove(session.SessionId, out _);
+        Log.SessionDiscarded(_logger);
+        _ = TryLogoutAsync(session.SessionId);
     }
 
     private async Task<SankhyaSessionInfo> OpenPooledAsync(CancellationToken cancellationToken)
