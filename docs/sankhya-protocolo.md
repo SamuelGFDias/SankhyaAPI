@@ -250,6 +250,17 @@ Investigação do sintoma "a exclusão estoura o timeout, mas o registro é excl
 | TGFPAR (parceiro): 392 FKs, 336 sem índice na filha, entre elas `AD_INTCONTADORES.CODPARC` (146 milhões de linhas; a varredura equivalente passou de 300 s) e várias colunas da TGFCAB (1,16 milhão). TGFPRO (produto): 378 FKs, 280 sem índice, entre elas `AD_INTCONTADORES.CODPROD` e `TGFSEU.CODSERV` (9,5 milhões; 28 s) | H |
 | **O executeQuery só confere o começo do texto.** Um lote `SELECT 1; CREATE INDEX ...` chega ao SQL Server, e o login do banco do Sankhya é `db_owner`. É um caminho para DDL que o Sankhya não previu; trate SQL montado por concatenação como risco alto (o `SankhyaSql` escapa a interpolação) | H |
 
+**Índices criados na homologação (2026-11-20, a pedido do dono do ambiente, pelo lote `SELECT 1; CREATE INDEX ... WITH (ONLINE = ON)`):**
+
+| Índice | Resultado |
+|---|---|
+| `AD_TADOSE_FKCTT` em `AD_TADOSE (CODPARC, CODCONTATO)` | Criado em 3,5 s. A conferência equivalente da FK caiu de 10 s para 0,1 s, e o `removeRecord` de contato, de ~0,9 s para ~0,3 s com o servidor livre (3 medições de cada lado). Para desfazer: `DROP INDEX AD_TADOSE_FKCTT ON AD_TADOSE` |
+| `AD_INTCONTADORES (CODPARC)` e `(CODPROD)` (146 milhões de linhas, 235 GB) | **Não criado.** O Sankhya corta o executeQuery aos 10 minutos ("The query has timed out") e o `CREATE INDEX` é desfeito. Índice em tabela desse porte precisa ser criado direto no banco pelo DBA (de preferência `ONLINE = ON, RESUMABLE = ON`) |
+
+O executeQuery tem, portanto, um **timeout de servidor de 10 minutos** (diferente do `removeRecord`, que rodou além dos 100 s do cliente até o fim).
+
+O pacote avisa sobre esses índices sozinho (6.1.0): `MissingIndexWarnings` e `client.Diagnostics.FindMissingForeignKeyIndexesAsync` (README, "Exclusão lenta e índices").
+
 Consulta que lista as FKs sem índice na filha para uma tabela-pai (só catálogo, leve):
 
 ```sql

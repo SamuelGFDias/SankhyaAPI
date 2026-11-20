@@ -72,6 +72,9 @@ internal sealed class SankhyaSession : ISankhyaSession, IDisposable
 
     public SessionMode Mode => _options.SessionMode;
 
+    /// <summary>Há sessão explícita aberta (<see cref="LoginAsync"/>).</summary>
+    internal bool HasExplicitSession => _explicit != null;
+
     /// <summary>Ids das sessões abertas no pool (para testes).</summary>
     internal IReadOnlyCollection<string> PooledSessionIds => _open.Keys.ToList();
 

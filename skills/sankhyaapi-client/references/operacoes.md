@@ -99,3 +99,11 @@ await arquivo.Content.CopyToAsync(destino);   // ContentType, Format, CanExport,
 SankhyaXmlResponse r = await sankhya.Session.ExecuteAsync((id, ct) =>
     sankhya.Transport.SendXmlAsync("Servico.metodo", [new XElement("campo", "valor")], id, idempotent: false, ct));
 ```
+
+## Exclusão lenta e índices
+
+Exclusão que estoura o timeout costuma ser FK sem índice na tabela filha: o banco varre a filha inteira para cada exclusão (e espera os locks dela). O timeout não cancela nada: a exclusão termina no servidor.
+
+- O pacote avisa sozinho (`Warning` com o `CREATE INDEX`) quando um delete passa de `SlowDeleteThreshold` ou estoura o tempo (`MissingIndexWarnings`, ligado por padrão).
+- Sob demanda: `await client.Diagnostics.FindMissingForeignKeyIndexesAsync("Contato")` devolve `SankhyaIndexSuggestion` (filha, colunas, linhas, `CreateIndexSql`), da filha maior para a menor. Aceita entidade ou tabela. Só SQL Server (`NotSupportedException` no Oracle).
+- Recomende revisar com o DBA e preferir tabelas `AD_`; não crie índice pelo pacote.

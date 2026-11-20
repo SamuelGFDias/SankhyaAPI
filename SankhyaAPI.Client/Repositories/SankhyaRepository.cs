@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
+using SankhyaAPI.Client.Diagnostics;
 using SankhyaAPI.Client.Mapping;
 using SankhyaAPI.Client.Session;
 using SankhyaAPI.Client.Transport;
@@ -129,12 +131,19 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
     private readonly ISankhyaSession _session;
     private readonly EntityMap _map;
     private readonly bool _verifyExistence;
+    private readonly SankhyaDiagnostics? _diagnostics;
 
-    public SankhyaRepository(ISankhyaTransport transport, ISankhyaSession session, string? entityName = null, bool verifyExistenceOnUpdate = true)
+    public SankhyaRepository(
+        ISankhyaTransport transport,
+        ISankhyaSession session,
+        string? entityName = null,
+        bool verifyExistenceOnUpdate = true,
+        SankhyaDiagnostics? diagnostics = null)
     {
         _transport = transport;
         _session = session;
         _verifyExistence = verifyExistenceOnUpdate;
+        _diagnostics = diagnostics;
         _map = SankhyaMaps.For(typeof(T));
         EntityName = entityName ?? _map.EntityName
                   ?? throw new InvalidOperationException(
@@ -239,7 +248,17 @@ internal sealed class SankhyaRepository<T> : ISankhyaRepository<T> where T : cla
     public async Task DeleteManyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default)
     {
         var body = EntityXml.Remove(_map, EntityName, entities.Cast<object>().ToList()).ToList();
-        await SendAsync(SankhyaServices.RemoveRecord, body, idempotent: false, cancellationToken);
+        long start = Stopwatch.GetTimestamp();
+        try
+        {
+            await SendAsync(SankhyaServices.RemoveRecord, body, idempotent: false, cancellationToken);
+        } catch (Exception ex)
+        {
+            _diagnostics?.ObserveDelete(EntityName, Stopwatch.GetElapsedTime(start), ex);
+            throw;
+        }
+
+        _diagnostics?.ObserveDelete(EntityName, Stopwatch.GetElapsedTime(start), null);
     }
 
     /// <summary>

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SankhyaAPI.Client.Configuration;
+using SankhyaAPI.Client.Diagnostics;
 using SankhyaAPI.Client.Mapping;
 using SankhyaAPI.Client.Reports;
 using SankhyaAPI.Client.Repositories;
@@ -22,12 +23,20 @@ public sealed class SankhyaClient : IAsyncDisposable
     private readonly HttpClient? _ownedHttpClient;
     private readonly SankhyaClientOptions _options;
 
-    internal SankhyaClient(ISankhyaTransport transport, ISankhyaSession session, SankhyaClientOptions options, HttpClient? ownedHttpClient = null)
+    private readonly SankhyaDiagnostics _diagnostics;
+
+    internal SankhyaClient(
+        ISankhyaTransport transport,
+        ISankhyaSession session,
+        SankhyaClientOptions options,
+        HttpClient? ownedHttpClient = null,
+        ILogger<SankhyaDiagnostics>? diagnosticsLogger = null)
     {
         Transport = transport;
         Session = session;
         Sql = new SankhyaSqlClient(transport, session, options.Dialect);
         Reports = new SankhyaReports(transport, session);
+        _diagnostics = new SankhyaDiagnostics(Sql, options, diagnosticsLogger, session is SankhyaSession s ? () => s.HasExplicitSession : null);
         _options = options;
         _ownedHttpClient = ownedHttpClient;
     }
@@ -45,7 +54,7 @@ public sealed class SankhyaClient : IAsyncDisposable
         };
         var transport = new SankhyaTransport(http, options, loggerFactory?.CreateLogger<SankhyaTransport>());
         var session = new SankhyaSession(transport, options, loggerFactory?.CreateLogger<SankhyaSession>());
-        return new SankhyaClient(transport, session, options, http);
+        return new SankhyaClient(transport, session, options, http, loggerFactory?.CreateLogger<SankhyaDiagnostics>());
     }
 
     public ISankhyaSession Session { get; }
@@ -60,11 +69,17 @@ public sealed class SankhyaClient : IAsyncDisposable
     public ISankhyaReports Reports { get; }
 
     /// <summary>
+    /// Diagnósticos de desempenho (índices que faltam). O aviso automático em exclusão lenta é controlado por
+    /// <see cref="SankhyaClientOptions.MissingIndexWarnings"/>.
+    /// </summary>
+    public ISankhyaDiagnostics Diagnostics => _diagnostics;
+
+    /// <summary>
     /// Repositório do modelo, pelo mapa registrado (<see cref="SankhyaMaps.Register{TMap}"/> ou <c>AddEntity</c>) ou pelos
     /// atributos. <paramref name="entityName"/> substitui o nome da entidade do mapa.
     /// </summary>
     public ISankhyaRepository<T> Repository<T>(string? entityName = null) where T : class, new() =>
-        new SankhyaRepository<T>(Transport, Session, entityName, _options.VerifyExistenceOnUpdate);
+        new SankhyaRepository<T>(Transport, Session, entityName, _options.VerifyExistenceOnUpdate, _diagnostics);
 
     public async ValueTask DisposeAsync()
     {
@@ -98,7 +113,7 @@ public static class SankhyaServiceCollectionExtensions
     /// <summary>
     /// Registra o cliente Sankhya: opções validadas na inicialização, <c>HttpClient</c> pelo
     /// <c>IHttpClientFactory</c> (sem cookies), sessão (singleton), <see cref="ISankhyaSql"/>,
-    /// <see cref="ISankhyaReports"/> e <see cref="SankhyaClient"/>.
+    /// <see cref="ISankhyaReports"/>, <see cref="ISankhyaDiagnostics"/> e <see cref="SankhyaClient"/>.
     /// </summary>
     /// <example>
     /// <code>
@@ -130,9 +145,11 @@ public static class SankhyaServiceCollectionExtensions
         services.TryAddSingleton(sp => new SankhyaClient(
             sp.GetRequiredService<ISankhyaTransport>(),
             sp.GetRequiredService<ISankhyaSession>(),
-            sp.GetRequiredService<IOptions<SankhyaClientOptions>>().Value));
+            sp.GetRequiredService<IOptions<SankhyaClientOptions>>().Value,
+            diagnosticsLogger: sp.GetService<ILogger<SankhyaDiagnostics>>()));
         services.TryAddSingleton(sp => sp.GetRequiredService<SankhyaClient>().Sql);
         services.TryAddSingleton(sp => sp.GetRequiredService<SankhyaClient>().Reports);
+        services.TryAddSingleton(sp => sp.GetRequiredService<SankhyaClient>().Diagnostics);
 
         return new SankhyaBuilder(services);
     }

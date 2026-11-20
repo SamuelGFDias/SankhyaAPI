@@ -9,7 +9,7 @@
 		<Title>SankhyaAPI.Client.Testing</Title>
 		<Description>Servidor fake do Sankhya (WireMock) e utilitários de teste para integrações com o SankhyaAPI.Client, sem precisar de um Sankhya real.</Description>
 		<Authors>samueldias21</Authors>
-		<Version>6.0.1</Version>
+		<Version>6.1.0</Version>
 		<PackageId>SankhyaAPI.Client.Testing</PackageId>
 		<PackageRequireLicenseAcceptance>False</PackageRequireLicenseAcceptance>
 		<PackageReadmeFile>README.md</PackageReadmeFile>

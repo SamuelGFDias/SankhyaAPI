@@ -44,4 +44,15 @@ internal static partial class Log
 
     [LoggerMessage(6, LogLevel.Warning, "Sessão Sankhya descartada: a operação terminou sem resposta (tempo esgotado ou cancelamento) e a requisição pode seguir no servidor")]
     public static partial void SessionDiscarded(ILogger logger);
+
+    [LoggerMessage(7, LogLevel.Warning,
+        "Sankhya {Entity}: exclusão lenta ({ElapsedMs} ms). A FK {ForeignKey} em {ChildTable} ({Columns}) não tem índice, e cada exclusão em {ParentTable} varre as {ChildRows} linhas dela. Índice sugerido: {CreateIndexSql}")]
+    public static partial void MissingIndex(ILogger logger, string entity, long elapsedMs, string foreignKey, string childTable, string columns,
+        long childRows, string parentTable, string createIndexSql);
+
+    [LoggerMessage(8, LogLevel.Information, "Sankhya {Entity}: exclusão lenta ({ElapsedMs} ms), sem FK relevante sem índice; confira locks e triggers")]
+    public static partial void NoMissingIndex(ILogger logger, string entity, long elapsedMs);
+
+    [LoggerMessage(9, LogLevel.Information, "Sankhya {Entity}: o diagnóstico de índices falhou; será tentado de novo na próxima exclusão lenta")]
+    public static partial void MissingIndexCheckFailed(ILogger logger, string entity, Exception exception);
 }
