@@ -136,6 +136,46 @@ public class ConsultasFakeTests : IDisposable
         Assert.Contains("SELECT * FROM (SELECT CODUSU FROM TSIUSU) q ORDER BY CODUSU OFFSET 0 ROWS", _fake.Calls(Query)[0].RequestMessage!.Body);
     }
 
+    // #52: o mapa de linha não tem chave; um modelo com [Key] (entidade do CRUD) também serve de linha.
+    private const string MetadataUsuario = """[{"name":"CODUSU","order":1,"userType":"I"},{"name":"NOMEUSU","order":2,"userType":"S"}]""";
+
+    [Fact]
+    public async Task QueryRawAsync_mapeia_modelo_com_Key()
+    {
+        _fake.WithQuery(MetadataUsuario, """[[10,"SUP"]]""");
+
+        List<Usuario> linhas = await _fake.CreateClient().Sql.QueryRawAsync<Usuario>("SELECT CODUSU, NOMEUSU FROM TSIUSU");
+
+        Usuario linha = Assert.Single(linhas);
+        Assert.Equal(10, linha.CodUsu.Value);
+        Assert.Equal("SUP", linha.NomeUsu.Value);
+    }
+
+    [Fact]
+    public async Task QueryTopAsync_mapeia_modelo_com_Key()
+    {
+        _fake.WithQuery(MetadataUsuario, """[[10,"SUP"],[11,"OUTRO"]]""");
+
+        SankhyaRows<Usuario> rows = await _fake.CreateClient().Sql.QueryTopAsync<Usuario>("SELECT CODUSU, NOMEUSU FROM TSIUSU", 1);
+
+        Assert.Equal(10, Assert.Single(rows.Items).CodUsu.Value);
+        Assert.True(rows.HasMore);
+    }
+
+    [Fact]
+    public async Task QueryPagedAsync_mapeia_modelo_com_chave_auto_enumerada()
+    {
+        _fake.WithQuery("""[{"name":"CODPROD","order":1,"userType":"I"},{"name":"DESCRPROD","order":2,"userType":"S"}]""", """[[10,"PARAFUSO"]]""");
+
+        var produtos = new List<Produto>();
+        await foreach (Produto p in _fake.CreateClient().Sql.QueryPagedAsync<Produto>("SELECT CODPROD, DESCRPROD FROM TGFPRO", "CODPROD", 5))
+            produtos.Add(p);
+
+        Produto produto = Assert.Single(produtos);
+        Assert.Equal(10L, produto.CodProd.Value);
+        Assert.Equal("PARAFUSO", produto.DescrProd.Value);
+    }
+
     [Theory]
     [InlineData("SELECT CODUSU FROM TSIUSU ORDER BY CODUSU", true)]
     [InlineData("SELECT * FROM (SELECT TOP 5 CODUSU FROM TSIUSU ORDER BY CODUSU) x", false)]
